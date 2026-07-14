@@ -2,17 +2,21 @@
 """Exercise every I2C code path against a RUNNING ChiBio server and report.
 
 Runs on the device against 127.0.0.1 (loopback is trusted, so no token needed).
-Triggers the real measurement routes for each present reactor — which cover the
-full I2C method surface the smbus2 migration would touch:
+/getSysdata returns only the CURRENT UI device, so this switches to each present
+reactor with /changeDevice, triggers the real measurement routes, and reads the
+decoded values back. Between them the measurements cover the full I2C method
+surface the smbus2 migration would touch:
 
-  measure_temp Internal/External -> I2CCom 16-bit read (readU16)
-  measure_temp IR                -> I2CCom SMBUS path   (read_word_data)
-  measure_od / measure_fp        -> AS7341 reads        (write8/readU8)
-  every I2CCom                   -> multiplexer switch   (write8/readRaw8)
+  measure_temp Internal/External -> I2CCom 16-bit read (readU16)   [migration-affected]
+  measure_temp IR                -> I2CCom SMBUS path (read_word_data) [already smbus2 -> control]
+  measure_od / measure_fp        -> AS7341 reads (write8/readU8)   [migration-affected]
+  every I2CCom                   -> multiplexer switch (write8/readRaw8) [migration-affected]
 
-It dumps the full /getSysdata snapshot to selftest-<label>.json so you can diff a
-"before" (Adafruit_GPIO) run against an "after" (smbus2) run. Read-only w.r.t.
-the experiment: it reads sensors, drives no pumps and no sustained actuation.
+Dumps each device's /getSysdata snapshot to selftest-<label>.json so a "before"
+(Adafruit_GPIO) run can be diffed against an "after" (smbus2) run. Read-only
+w.r.t. the experiment: reads sensors, drives no pumps and no sustained actuation.
+It does briefly switch the UI device (the GUI view will hop between reactors) and
+restores the original at the end.
 
 Usage:  python3 device_selftest.py <label>      e.g.  before  /  after
 """
@@ -22,14 +26,11 @@ import time
 import urllib.request
 
 BASE = "http://127.0.0.1:5000"
-
-# Sane physical ranges — a byte-order/signature bug shows up as a gross violation
-# (e.g. a byte-swapped temp of 4096, not a small drift), which is exactly what we
-# want the migration to catch.
-TEMP_MIN, TEMP_MAX = 5.0, 80.0
+ALL_M = ["M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7"]
+TEMP_MIN, TEMP_MAX = 5.0, 80.0  # a byte-order bug shows as a gross violation, not drift
 
 
-def get_sysdata():
+def gs():
     with urllib.request.urlopen(BASE + "/getSysdata/", timeout=10) as r:
         return json.load(r)
 
@@ -41,16 +42,13 @@ def post(path):
 
 
 def check(cond, label, detail=""):
-    mark = "PASS" if cond else "FAIL"
-    print("  [%s] %s%s" % (mark, label, (" -- " + detail) if detail else ""))
-    return 1 if cond else 0
+    print("  [%s] %s%s" % ("PASS" if cond else "FAIL", label,
+                           (" -- " + detail) if detail else ""))
+    return bool(cond)
 
 
-def measure_device(M):
-    for which in ("Internal", "External", "IR"):
-        post("/MeasureTemp/%s/%s" % (which, M))
-    post("/MeasureOD/%s" % M)
-    post("/MeasureFP/%s" % M)
+def num(v):
+    return v if isinstance(v, (int, float)) else None
 
 
 def main():
@@ -60,52 +58,72 @@ def main():
     label = sys.argv[1]
 
     try:
-        sd = get_sysdata()
+        start_id = gs().get("DeviceID")
     except Exception as e:
         print("Could not reach the server at %s -- is it running? (%s)" % (BASE, e))
         return 2
 
-    present = [M for M in ("M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7")
-               if sd.get(M, {}).get("present") == 1]
-    print("Present devices: %s" % (", ".join(present) or "NONE"))
+    # SAFELY discover present reactors. The top-level 'present' flag DEFAULTS to 1
+    # for un-scanned devices, and measuring an absent device trips the intended
+    # panic/watchdog kill (os._exit) in I2CCom. So run the real scan first — it
+    # probes only the internal thermometer, the one device allowed to fail
+    # gracefully (sets present=0) instead of panicking — then trust presentDevices.
+    post("/scanDevices/all")
+    time.sleep(12)  # scan runs in the background; absent devices retry before giving up.
+    pd = gs().get("presentDevices", {})
+    present = [M for M in ALL_M if pd.get(M) == 1]
+    print("Present devices (from scan): %s" % (", ".join(present) or "NONE"))
     if not present:
-        print("No present devices to test.")
+        print("Scan found no connected reactors; nothing to measure.")
         return 2
 
-    for M in present:
-        measure_device(M)
-    time.sleep(3)  # measurements run in background threads; let them land.
-    sd = get_sysdata()
-
     passed = failed = 0
+    snapshots = {}
     for M in present:
-        d = sd[M]
+        post("/changeDevice/" + M)
+        for which in ("Internal", "External", "IR"):
+            post("/MeasureTemp/%s/%s" % (which, M))
+        post("/MeasureOD/" + M)
+        post("/MeasureFP/" + M)
+        time.sleep(3)  # measurements run in background threads; let them land.
+        d = gs()
+        snapshots[M] = d
+
         print("\n%s (OD device: %s):" % (M, d.get("OD", {}).get("device")))
-        results = []
-        # present flag must survive — present==0 means I2C comms failed hard.
-        results.append(check(d.get("present") == 1, "device still present after reads"))
-        for t in ("ThermometerInternal", "ThermometerExternal", "ThermometerIR"):
-            v = d.get(t, {}).get("current")
-            results.append(check(isinstance(v, (int, float)) and TEMP_MIN <= v <= TEMP_MAX,
-                                 "%s in range" % t, "%.2f C" % v if isinstance(v, (int, float)) else str(v)))
-        raw = d.get("OD0", {}).get("raw")
-        results.append(check(isinstance(raw, (int, float)) and raw > 0,
-                             "OD raw transmission > 0", str(raw)))
+        res = []
+        res.append(check(d.get("present") == 1, "device still present after reads"))
+        # Migration-affected 16-bit reads:
+        for t in ("ThermometerInternal", "ThermometerExternal"):
+            v = num(d.get(t, {}).get("current"))
+            res.append(check(v is not None and TEMP_MIN <= v <= TEMP_MAX,
+                             "%s in range" % t, ("%.2f C" % v) if v is not None else "n/a"))
+        # Migration-affected AS7341 read:
+        raw = num(d.get("OD0", {}).get("raw"))
+        res.append(check(raw is not None and raw > 0, "OD raw transmission > 0", str(raw)))
         for FP in ("FP1", "FP2", "FP3"):
             if d.get(FP, {}).get("ON") == 1:
-                base = d[FP].get("Base")
-                results.append(check(isinstance(base, (int, float)) and base > 0,
-                                     "%s base signal > 0" % FP, str(base)))
-        passed += sum(results)
-        failed += len(results) - sum(results)
+                b = num(d[FP].get("Base"))
+                res.append(check(b is not None and b > 0, "%s base signal > 0" % FP, str(b)))
+        # IR uses the smbus path (unaffected by the migration) -> informational only.
+        ir = num(d.get("ThermometerIR", {}).get("current"))
+        print("  [INFO] ThermometerIR (smbus control): %s" % (("%.2f C" % ir) if ir is not None else "n/a"))
+
+        passed += sum(res)
+        failed += len(res) - sum(res)
+
+    # Restore the original UI device so the GUI returns to where it was.
+    for M in ALL_M:
+        post("/changeDevice/" + M)
+        if gs().get("DeviceID") == start_id:
+            break
 
     fname = "selftest-%s.json" % label
     with open(fname, "w") as f:
-        json.dump(sd, f, indent=1, sort_keys=True)
+        json.dump(snapshots, f, indent=1, sort_keys=True)
 
-    print("\n" + "=" * 48)
+    print("\n" + "=" * 52)
     print("SUMMARY (%s): %d passed, %d failed" % (label, passed, failed))
-    print("Full snapshot written to %s (diff before/after to compare readings)." % fname)
+    print("Per-device snapshot written to %s (diff before/after to compare readings)." % fname)
     return 0 if failed == 0 else 1
 
 
