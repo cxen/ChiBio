@@ -28,9 +28,16 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 - [x] **Golden-image capture/restore flow** documented in `make-golden-image.md` — flash once, fix, snapshot the eMMC/SD, then restore that image forever after. Removes the dependency on EOL apt at provisioning time.
 - [ ] **Do NOT port to a newer mainline OS image** (decision recorded, nothing to do). The Chi.Bio Debian 10.5 / Linux 4.19 image has kernel + device-tree patches for the I2C bus, the watchdog/mux GPIOs, and PWM that are baked into the image and not published as a portable patch set; the bundled Adafruit_BBIO build is matched to that kernel. Stay on the blessed image and re-flash it.
 
-## P3 — Cleanup
+## P3 — Cleanup / docs
 
-- [ ] **Delete dead scaffolding** `resolve_device_id` / `get_device_item` (`app.py:62/69`) — defined, never called. Or wire them in as the input validation they look intended for.
+- [ ] **Write a README** (none exists) with installation + usage that reflect this fork's changes. Should cover:
+  - **Context:** fork of HarrisonSteel/ChiBio; runs *on* the BeagleBone (Debian 10.5 / Py 3.7), not a dev machine; module layout (`app.py` + `chibio_*.py`, with `original_app.py` as reference).
+  - **Install:** `setup.sh` (archive.debian.org repoint, `requirements.txt` pinned deps, Adafruit_BBIO from bundled tarball); the golden-image capture/restore flow (`make-golden-image.md`) as the preferred provisioning path.
+  - **Run:** `cb.sh` binds `0.0.0.0:5000` (USB + LAN); set `CHIBIO_TOKEN` (via `.chibio_token`) for auth.
+  - **Access / auth:** point-to-point USB is token-free; remote/LAN needs the token — open once with `?token=…`, cookie keeps it seamless after (see `chibio_auth.py`). Note HTTP-only caveat.
+  - **UI:** dark-mode toggle.
+  - **Dev/test:** rsync-deploy flow (device has no `git pull`); `device_selftest.py` for before/after I2C verification; note I2C now runs on `smbus2` (Adafruit_GPIO removed), GPIO/PWM still on Adafruit_BBIO.
+- [ ] **Delete dead scaffolding** `resolve_device_id` / `get_device_item` (`app.py:60/67`) — defined, never called. Or wire them in as the input validation they look intended for.
 - [x] **Remove unused `import serial`** (`app.py:20`). Done — never used anywhere (traced to the first commit, carried through the refactor); Chi.Bio is I2C-only. Also dropped `pip3 install serial` from `setup.sh` (it installed the wrong package, `serial` not `pyserial`, for this unused import).
 
 ## P4 — Optional / larger (robustness direction)
