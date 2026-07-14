@@ -16,10 +16,10 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 - [x] **Document the two self-healing concurrency races** (mark with `ponytail:` comments, no restructure needed):
   - [x] Cross-request ordering: `SetOutputTarget`/`SetOutputOn` now run as separate background threads (`app.py:445/451`), so two rapid UI actions can execute out of order. `lock` serializes the bus, not intent. `RegulateOD` re-asserts state each cycle.
   - [x] Pump-restart TOCTOU in `set_output_target_sync` off→on (`app.py:471`): old loop can exit `running→0` after the `on` path checked `running==1`, leaving `ON==1` with no loop. Worst case = one missed pump cycle; restarted next minute.
-- [ ] **Auth model caveats** (`chibio_auth.py`) — only harden if the device may sit on a shared subnet:
-  - [ ] All private IPs are trusted (`is_private`) — any LAN host bypasses the token.
-  - [ ] Only POSTs are checked; all GETs are open.
-  - [ ] No `CHIBIO_TOKEN` set ⇒ non-local POSTs allowed with a warning (open by default).
+- [x] **Auth model hardened for shared subnet** (`chibio_auth.py`):
+  - [x] Trust narrowed from all private IPs to loopback + the BeagleBone USB point-to-point subnets (192.168.7.0/24, 192.168.6.0/24). A shared-LAN host is no longer trusted.
+  - [x] Fail closed: no `CHIBIO_TOKEN` set ⇒ non-local POSTs are denied (was open-by-default with a warning).
+  - GETs remain open by design: the model is **view = open, actuate = token**. Protecting GETs would require threading the token through every AJAX poll/page load in the frontend — disproportionate, and the real threat (a LAN host driving pumps/heater) is a POST.
 
 ## P2 — OS re-flashing / provisioning
 
