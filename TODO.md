@@ -45,3 +45,21 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 - [ ] **Hardware-free import path for testing.** Importing `app.py` runs `initialiseAll()` and touches GPIO/I2C, so nothing can be tested off-device. A guard (env var / mock bus) to allow `import app` on a laptop would unlock smoke tests.
 - [x] **Pin dependencies.** Added `requirements.txt` pinned to the device's known-good versions (verified 2026-07-14; last releases compatible with the image's Python 3.7). `setup.sh` now does `pip3 install -r requirements.txt` instead of unpinned installs. Also fixed a latent bug: `setup.sh` copied `app.py` but not the `chibio_*.py` modules, so a fresh provision of the refactor would fail to import — now copies the modules and `requirements.txt` too. Adafruit_BBIO stays a from-source tarball build (kernel-matched), not pinned via pip.
 - [ ] **Retire `original_app.py`** once confident in the refactor — it's reference-only and not imported. Keep until then.
+
+## P5 — Sensor / data / UI improvements (planned, forward-looking)
+
+New track from the 2026-07-14 improvement review — data-quality and UI enhancements, not post-refactor cleanup. **Validate every sensor-path change with `device_selftest.py` (before/after) so readings don't silently regress.** Several of these add new recorded fields, which today means a 3-place edit (`initialise` record lists, `csvData`, `downsample`) — so land the DictWriter item (below) early to make the rest cheaper.
+
+### Sensors / measurement (`chibio_optics.py`)
+- [ ] **Auto-ranging gain on the AS7341.** On saturation (`ADC==65535`) drop gain and re-read; on very weak signal raise gain. Replaces the current print-and-continue (whose own comment doubts the saturation check works). **Record the gain actually used alongside each measurement** (transparency) — add it to the record/CSV/`getSysdata`, don't just apply it silently.
+- [ ] **Dark-channel background subtraction.** The `DARK` channel is already measured in `get_spectrum`/`get_light` and thrown away. Subtract it from OD/FP. **Save BOTH raw and dark-corrected values** — keep raw, add corrected fields; never overwrite raw.
+- [ ] **No fake fallback values.** `get_light` currently sets `ADC0=1`/rest`=0` after a double read-failure, injecting a bogus point that looks real. Record a `NaN`/missing marker instead so failures are distinguishable in analysis.
+- [ ] **Replicate + median for OD/FP.** Take ~3 flashes per measurement, record the median as the value, **and record the spread/error** (std dev or min–max) so measurement noise is captured, not discarded.
+
+### Data collection (`chibio_control_helpers.py`)
+- [ ] **CSV via `csv.DictWriter`.** Replace the parallel `fieldnames`/`row` lists (must be equal length or the header is silently dropped) with a dict keyed by name. Kills that whole bug class and makes adding a field one edit. Do this early — the sensor items above each add columns (gain, raw+corrected, error/spread).
+- [ ] **Per-experiment metadata sidecar.** Write a JSON next to each CSV: device ID, calibration constants used, units per column, software git hash, start time, and sensor settings (gain/integration). Makes datasets self-describing and reproducible.
+
+### GUI (`templates/index.html`, `static/`)
+- [ ] **Self-host Bootstrap + the charting lib (drop CDNs).** UI currently degrades/breaks offline (there's a `TitleFailure()` fallback for the CDN logo). Bundle as local static files so the device works standalone/isolated.
+- [ ] **Replace Google Charts with a self-hosted, incremental plotter.** Kills the "destroy + rebuild the whole chart every 2 s to avoid a memory leak" hack. **Recommended: uPlot** (~40 KB, canvas, built for fast live time-series on weak hardware). **Alternative: Dygraphs** (built-in pan/zoom over long runs, less custom code). Plotly.js only as an optional heavy "detailed/export" view, not the live plot. This is the concrete choice for the self-hosting item above.
