@@ -665,7 +665,7 @@ def CharacteriseDevice(M,Program):
     # THis umbrella function is used to run the actual characteriseation function in a thread to prevent GUnicorn worker timeout.
     Program=str(Program)
     if (Program=='C1'):
-        cthread=Thread(target = CharacteriseDevice2, args=(M))
+        cthread=Thread(target = CharacteriseDevice2, args=(M,))
         cthread.setDaemon(True)
         cthread.start()
     

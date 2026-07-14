@@ -9,7 +9,7 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 
 ## P1 — Bugs
 
-- [ ] **`CharacteriseDevice` crashes.** `app.py:668` — `Thread(target=CharacteriseDevice2, args=(M))`; `(M)` is a string, not a tuple, so it spreads into `CharacteriseDevice2('M','0')` → `TypeError`. Fix: `args=(M,)`. (Pre-existing, carried from `original_app.py:1355`.)
+- [x] **`CharacteriseDevice` crashes.** `app.py:668` — `Thread(target=CharacteriseDevice2, args=(M))`; `(M)` is a string, not a tuple, so it spreads into `CharacteriseDevice2('M','0')` → `TypeError`. Fixed: `args=(M,)`. (Pre-existing, carried from `original_app.py:1355`.)
 
 ## P2 — Robustness / security
 
