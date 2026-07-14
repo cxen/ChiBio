@@ -23,9 +23,45 @@
 <meta http-equiv='expires' content='0'>
 <meta http-equiv='pragma' content='no-cache'>
 
+<style>
+  /* ponytail: dark mode via a scoped override block — Bootstrap 4 has no native
+     dark theme, so this is the minimum that works. Google Charts plots keep their
+     own light canvas (they ignore CSS); everything else follows data-theme.
+     Upgrade path: pass backgroundColor/colors in HTMLScripts.js to darken plots. */
+  html[data-theme="dark"] body { background:#1c1c1e; color:#e2e2e2; }
+  html[data-theme="dark"] .container { background:#2a2a2c; }
+  html[data-theme="dark"] h1,html[data-theme="dark"] h2,html[data-theme="dark"] h3,
+  html[data-theme="dark"] h4,html[data-theme="dark"] h5,html[data-theme="dark"] h6 { color:#f0f0f0; }
+  html[data-theme="dark"] a { color:#5aa9e6; }
+  html[data-theme="dark"] hr { border-top-color:#444; }
+  html[data-theme="dark"] table, html[data-theme="dark"] .table { color:#e2e2e2; }
+  html[data-theme="dark"] .table td, html[data-theme="dark"] .table th { border-color:#3a3a3c; }
+  html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea {
+    background:#333; color:#e2e2e2; border:1px solid #555; }
+  html[data-theme="dark"] button:not([class]) {
+    background:#3a3a3c; color:#e6e6e6; border:1px solid #555; }
+  #themeToggle { position:fixed; top:10px; right:14px; z-index:1000; border:1px solid #888;
+    border-radius:16px; padding:4px 12px; cursor:pointer; background:#fff; color:#222; font-size:14px; }
+  html[data-theme="dark"] #themeToggle { background:#3a3a3c; color:#f0f0f0; border-color:#666; }
+</style>
+<script>
+  // Apply saved theme before the body paints to avoid a flash of light.
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('chibio-theme') || 'light');
+  function toggleTheme(){
+    var d = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', d);
+    localStorage.setItem('chibio-theme', d);
+    document.getElementById('themeToggle').textContent = d === 'dark' ? '☀ Light' : '🌙 Dark';
+  }
+</script>
+
     </head>
     
 <body onload="getSysData()">
+
+<button id="themeToggle" onclick="toggleTheme()">🌙 Dark</button>
+<script>document.getElementById('themeToggle').textContent =
+  document.documentElement.getAttribute('data-theme') === 'dark' ? '☀ Light' : '🌙 Dark';</script>
 
 <script>google.charts.load('current', {packages: ['corechart', 'line']});</script>
 
