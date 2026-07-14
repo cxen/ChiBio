@@ -440,6 +440,10 @@ def SetFPMeasurement(item,Excite,Base,Emit1,Emit2,Gain):
         return ('', 204)
 
 
+# ponytail: cross-request ordering race. SetOutputTarget/SetOutputOn run as
+# separate background threads, so two rapid UI actions can execute out of order —
+# `lock` serializes the bus, not intent. Self-heals: RegulateOD re-asserts state
+# each cycle. Upgrade path: a per-device command queue if ordering ever matters.
 @application.route("/SetOutputTarget/<item>/<M>/<value>",methods=['POST'])
 def SetOutputTarget(M,item, value):
     run_background(set_output_target_sync, M, item, value)
@@ -468,6 +472,10 @@ def set_output_target_sync(M, item, value):
 
     sysData[M][item]['target']=value
 
+    # ponytail: pump-restart TOCTOU. The old modulation loop can exit (running->0)
+    # between this off and on, leaving ON==1 with no loop. Self-heals: worst case is
+    # one missed pump cycle, restarted next minute. Upgrade path: hold `lock` across
+    # the off/on pair if a missed cycle ever matters.
     if(sysData[M][item]['ON']==1 and not(item=='OD' or item=='Thermostat')):
         set_output_on_sync(M,item,0)
         set_output_on_sync(M,item,1)
