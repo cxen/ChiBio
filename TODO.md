@@ -16,10 +16,11 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 - [x] **Document the two self-healing concurrency races** (mark with `ponytail:` comments, no restructure needed):
   - [x] Cross-request ordering: `SetOutputTarget`/`SetOutputOn` now run as separate background threads (`app.py:445/451`), so two rapid UI actions can execute out of order. `lock` serializes the bus, not intent. `RegulateOD` re-asserts state each cycle.
   - [x] Pump-restart TOCTOU in `set_output_target_sync` off→on (`app.py:471`): old loop can exit `running→0` after the `on` path checked `running==1`, leaving `ON==1` with no loop. Worst case = one missed pump cycle; restarted next minute.
-- [ ] **Auth model — intentionally left fully open** (`chibio_auth.py`). Full remote access is wanted, so the original behavior stands: all private IPs trusted, GETs open, open-by-default when no `CHIBIO_TOKEN` is set. Hardening was tried and reverted per user request. Revisit only if a deployment ever needs to lock down. Caveats that come with staying open:
-  - All private IPs are trusted (`is_private`) — any LAN host bypasses the token.
-  - Only POSTs are checked; all GETs are open.
-  - No `CHIBIO_TOKEN` set ⇒ non-local POSTs allowed with a warning (open by default).
+- [x] **Auth model — secured with no loss of remote convenience** (`chibio_auth.py`):
+  - [x] Trust narrowed from all private IPs to loopback + the BeagleBone USB point-to-point subnets (192.168.7.0/24, 192.168.6.0/24). A shared-LAN host is no longer auto-trusted.
+  - [x] Every non-local request (view **and** control) requires the token. Fail closed: no `CHIBIO_TOKEN` set ⇒ all remote access denied.
+  - [x] Convenience preserved via a cookie: load once with `?token=…`, the device sets `chibio_token` (HttpOnly, 30-day), and the browser then sends it automatically on every request — all `$.ajax` control POSTs included, **zero frontend changes**. Point-to-point USB stays zero-touch.
+  - Requires `CHIBIO_TOKEN` to be exported where gunicorn launches (e.g. in `cb.sh`). One-time cost: remote users append `?token=…` on first load. Caveat: HTTP-only (no TLS), so the token is visible to anyone sniffing the wire — LAN access control, not wire encryption.
 
 ## P2 — OS re-flashing / provisioning
 
