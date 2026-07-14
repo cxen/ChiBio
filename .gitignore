@@ -1,5 +1,7 @@
 .DS_Store
 .chibio_token
+__pycache__/
+*.pyc
 
 # device self-test output artifacts (before/after migration comparison)
 selftest-*.json
