@@ -9,13 +9,12 @@ import logging
 from flask import Flask, render_template, jsonify
 from chibio_auth import init_auth
 from chibio_experiment import PumpModulation, RegulateOD, Thermostat, Zigzag, runExperiment
-from chibio_hardware import I2CCom, setPWM, setup_watchdog
+from chibio_hardware import I2CCom, get_i2c_device, setPWM, setup_watchdog
 from chibio_optics import get_light, get_spectrum
 from chibio_state import sysData, sysDevices, sysItems
 from threading import Thread
 import threading
 from datetime import datetime, date
-import Adafruit_GPIO.I2C as I2C
 import time
 import simplejson
 import smbus2 as smbus
@@ -221,14 +220,14 @@ def initialise(M):
 
     sysData[M]['GrowthRate']['record']=[]
 
-    sysDevices[M]['ThermometerInternal']['device']=I2C.get_i2c_device(0x18,2) #Get Thermometer on Bus 2!!!
-    sysDevices[M]['ThermometerExternal']['device']=I2C.get_i2c_device(0x1b,2) #Get Thermometer on Bus 2!!!
-    sysDevices[M]['DAC']['device']=I2C.get_i2c_device(0x48,2) #Get DAC on Bus 2!!!
-    sysDevices[M]['AS7341']['device']=I2C.get_i2c_device(0x39,2) #Get OD Chip on Bus 2!!!!!
-    sysDevices[M]['Pumps']['device']=I2C.get_i2c_device(0x61,2) #Get OD Chip on Bus 2!!!!!
+    sysDevices[M]['ThermometerInternal']['device']=get_i2c_device(0x18,2) #Get Thermometer on Bus 2!!!
+    sysDevices[M]['ThermometerExternal']['device']=get_i2c_device(0x1b,2) #Get Thermometer on Bus 2!!!
+    sysDevices[M]['DAC']['device']=get_i2c_device(0x48,2) #Get DAC on Bus 2!!!
+    sysDevices[M]['AS7341']['device']=get_i2c_device(0x39,2) #Get OD Chip on Bus 2!!!!!
+    sysDevices[M]['Pumps']['device']=get_i2c_device(0x61,2) #Get OD Chip on Bus 2!!!!!
     sysDevices[M]['Pumps']['startup']=0
     sysDevices[M]['Pumps']['frequency']=0x1e #200Hz PWM frequency
-    sysDevices[M]['PWM']['device']=I2C.get_i2c_device(0x60,2) #Get OD Chip on Bus 2!!!!!
+    sysDevices[M]['PWM']['device']=get_i2c_device(0x60,2) #Get OD Chip on Bus 2!!!!!
     sysDevices[M]['PWM']['startup']=0
     sysDevices[M]['PWM']['frequency']=0x03 #1526 Hz PWM frequency for fan/LEDs, maximum possible.
     sysDevices[M]['ThermometerIR']['device']=smbus.SMBus(bus=2) #Set up SMBus thermometer
@@ -274,7 +273,7 @@ def initialise(M):
 
 def initialiseAll():
     # Initialisation function which runs at when software is started for the first time.
-    sysItems['Multiplexer']['device']=I2C.get_i2c_device(0x74,2)
+    sysItems['Multiplexer']['device']=get_i2c_device(0x74,2)
     sysItems['FailCount']=0
     time.sleep(2.0) #This wait is to allow the watchdog circuit to boot.
     print(str(datetime.now()) + ' Initialising devices')

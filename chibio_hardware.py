@@ -5,10 +5,62 @@ from datetime import datetime
 from threading import Thread
 
 import Adafruit_BBIO.GPIO as GPIO
+import smbus2
 
 from chibio_state import lock, sysData, sysDevices, sysItems
 
 logger = logging.getLogger('chibio')
+
+# One SMBus handle per bus number, shared across all devices on that bus (the
+# global `lock` already serializes access). Mirrors how Adafruit_GPIO cached one
+# bus per busnum.
+_i2c_buses = {}
+
+
+def _get_bus(busnum):
+    bus = _i2c_buses.get(busnum)
+    if bus is None:
+        bus = smbus2.SMBus(busnum)
+        _i2c_buses[busnum] = bus
+    return bus
+
+
+class _I2CDevice:
+    """Drop-in replacement for Adafruit_GPIO.I2C.Device over smbus2, exposing only
+    the methods ChiBio actually calls. Behaviour is byte-identical to Adafruit_GPIO
+    on purpose — every method maps to the same underlying SMBus call it used, so
+    readings must not change. In particular readU16's second arg is `little_endian`
+    (NOT a register): the code relies on little_endian=False to byte-swap the
+    big-endian MCP9808 thermometers, so this must be preserved exactly.
+    """
+
+    def __init__(self, address, busnum):
+        self._addr = address
+        self._bus = _get_bus(busnum)
+
+    def write8(self, register, value):
+        self._bus.write_byte_data(self._addr, register, value & 0xFF)
+
+    def write16(self, register, value):
+        self._bus.write_word_data(self._addr, register, value & 0xFFFF)
+
+    def readU8(self, register):
+        return self._bus.read_byte_data(self._addr, register) & 0xFF
+
+    def readU16(self, register, little_endian=True):
+        result = self._bus.read_word_data(self._addr, register) & 0xFFFF
+        if not little_endian:
+            result = ((result << 8) & 0xFF00) + (result >> 8)
+        return result
+
+    def readRaw8(self):
+        return self._bus.read_byte(self._addr) & 0xFF
+
+
+def get_i2c_device(address, busnum):
+    # Signature-compatible with Adafruit_GPIO.I2C.get_i2c_device so call sites are
+    # unchanged apart from dropping the `I2C.` prefix.
+    return _I2CDevice(address, busnum)
 
 
 def runWatchdog():

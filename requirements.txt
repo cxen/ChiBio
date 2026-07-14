@@ -20,8 +20,8 @@ numpy==1.21.6
 simplejson==3.20.2
 smbus2==0.6.0
 
-# Legacy Adafruit I2C shim (I2C.get_i2c_device) + its deps.
-# ponytail: superseded by Blinka (already on the image); migrate off in code to drop these three.
-Adafruit_GPIO==1.0.3
+# Adafruit_GPIO dropped: its only use (I2C.get_i2c_device) was migrated to a small
+# smbus2 wrapper in chibio_hardware.py. These two were its deps but are kept pinned
+# because Blinka (present on the image) may still rely on them.
 Adafruit-PureIO==1.1.11
 spidev==3.8
