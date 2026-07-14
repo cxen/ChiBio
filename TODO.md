@@ -31,10 +31,10 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 ## P3 — Cleanup
 
 - [ ] **Delete dead scaffolding** `resolve_device_id` / `get_device_item` (`app.py:62/69`) — defined, never called. Or wire them in as the input validation they look intended for.
-- [ ] **Remove unused `import serial`** (`app.py:20`). (Pre-existing.)
+- [x] **Remove unused `import serial`** (`app.py:20`). Done — never used anywhere (traced to the first commit, carried through the refactor); Chi.Bio is I2C-only. Also dropped `pip3 install serial` from `setup.sh` (it installed the wrong package, `serial` not `pyserial`, for this unused import).
 
 ## P4 — Optional / larger (robustness direction)
 
 - [ ] **Hardware-free import path for testing.** Importing `app.py` runs `initialiseAll()` and touches GPIO/I2C, so nothing can be tested off-device. A guard (env var / mock bus) to allow `import app` on a laptop would unlock smoke tests.
-- [ ] **Pin dependencies.** `setup.sh` `pip3 install`s unpinned packages (flask, gunicorn, numpy, smbus2, simplejson). Pin versions / add a `requirements.txt` so a fresh device build is reproducible.
+- [x] **Pin dependencies.** Added `requirements.txt` pinned to the device's known-good versions (verified 2026-07-14; last releases compatible with the image's Python 3.7). `setup.sh` now does `pip3 install -r requirements.txt` instead of unpinned installs. Also fixed a latent bug: `setup.sh` copied `app.py` but not the `chibio_*.py` modules, so a fresh provision of the refactor would fail to import — now copies the modules and `requirements.txt` too. Adafruit_BBIO stays a from-source tarball build (kernel-matched), not pinned via pip.
 - [ ] **Retire `original_app.py`** once confident in the refactor — it's reference-only and not imported. Keep until then.

@@ -17,7 +17,6 @@ import threading
 from datetime import datetime, date
 import Adafruit_GPIO.I2C as I2C
 import time
-import serial
 import simplejson
 import smbus2 as smbus
 

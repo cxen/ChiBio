@@ -1,0 +1,27 @@
+# Pinned to the known-good versions verified running on the device (2026-07-14),
+# so a fresh setup.sh build is reproducible instead of pulling whatever pip
+# resolves that day. These are the last releases compatible with the image's
+# Python 3.7; do not bump without moving Python (which means a new OS image).
+#
+# Adafruit_BBIO is intentionally NOT here — it's built from the bundled tarball
+# against the baked kernel in setup.sh, not installed from PyPI.
+
+# Web server + framework (Flask stack fully pinned incl. transitives)
+gunicorn==23.0.0
+Flask==2.2.5
+Werkzeug==2.2.3
+Jinja2==3.1.6
+MarkupSafe==2.1.5
+itsdangerous==2.1.2
+click==8.1.8
+
+# Numerics, JSON, I2C
+numpy==1.21.6
+simplejson==3.20.2
+smbus2==0.6.0
+
+# Legacy Adafruit I2C shim (I2C.get_i2c_device) + its deps.
+# ponytail: superseded by Blinka (already on the image); migrate off in code to drop these three.
+Adafruit_GPIO==1.0.3
+Adafruit-PureIO==1.1.11
+spidev==3.8

@@ -26,16 +26,14 @@ mkdir ~/chibio
 cd ~/../home/debian
 cp cb.sh ~/chibio
 cp app.py ~/chibio
+cp chibio_*.py ~/chibio
+cp requirements.txt ~/chibio
 cp static -r ~/chibio
 cp templates -r ~/chibio
-pip3 install Gunicorn
-pip3 install flask
-pip3 install serial
-pip3 install Adafruit_GPIO
 pip3 install --user --upgrade setuptools
-pip3 install simplejson
-pip3 install smbus2
-pip3 install numpy
+# Pinned deps for a reproducible build (see requirements.txt). Adafruit_BBIO is
+# built from the bundled tarball below, not via pip.
+pip3 install -r requirements.txt
 cd ~/../home/debian
 tar xvzf Adafruit_BBIO-1.2.0.tar.gz
 cd Adafruit_BBIO-1.2.0/
