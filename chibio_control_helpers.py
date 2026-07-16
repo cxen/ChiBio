@@ -1,6 +1,8 @@
 import csv
+import json
 import math
 import os
+import subprocess
 import time
 import io
 import sys
@@ -222,6 +224,33 @@ _CSV_LED_COLUMNS = [
     ('LASER650', 'laser_setpoint'),
 ]
 
+# Best-effort physical unit per CSV column, for the metadata sidecar. Keys MUST
+# match the columns csvData writes (test_metadata_sidecar.py asserts this). "frac"
+# = 0..1 duty/intensity, "counts" = raw ADC counts, "ratio" = emit/base.
+_CSV_COLUMN_UNITS = {
+    'exp_time': 's', 'od_measured': 'OD', 'od_setpoint': 'OD', 'od_zero_setpoint': 'counts',
+    'thermostat_setpoint': 'C', 'heating_rate': 'frac', 'internal_air_temp': 'C',
+    'external_air_temp': 'C', 'media_temp': 'C', 'opt_gen_act_int': 'bool',
+    'pump_1_rate': 'frac', 'pump_2_rate': 'frac', 'pump_3_rate': 'frac', 'pump_4_rate': 'frac',
+    'media_vol': 'mL', 'stirring_rate': 'frac',
+    'LED_395nm_setpoint': 'frac', 'LED_457nm_setpoint': 'frac', 'LED_500nm_setpoint': 'frac',
+    'LED_523nm_setpoint': 'frac', 'LED_595nm_setpoint': 'frac', 'LED_623nm_setpoint': 'frac',
+    'LED_6500K_setpoint': 'frac', 'LED_600nm_setpoint': 'frac', 'LED_550nm_setpoint': 'frac',
+    'LED_White_setpoint': 'frac', 'laser_setpoint': 'frac', 'LED_UV_int': 'frac',
+    'FP1_base': 'counts', 'FP1_emit1': 'ratio', 'FP1_emit2': 'ratio',
+    'FP2_base': 'counts', 'FP2_emit1': 'ratio', 'FP2_emit2': 'ratio',
+    'FP3_base': 'counts', 'FP3_emit1': 'ratio', 'FP3_emit2': 'ratio',
+    'custom_prog_param1': 'program-defined', 'custom_prog_param2': 'program-defined',
+    'custom_prog_param3': 'program-defined', 'custom_prog_status': 'program-defined',
+    'zigzag_target': 'OD', 'growth_rate': 'per_hour',
+}
+
+# Gain the AS7341 actually runs at for the OD read, keyed by OD device. Mirrors the
+# hardcoded values in measure_od(); the git hash in the sidecar pins the exact code.
+_OD_GAIN_BY_DEVICE = {'LASER650': 1, 'LEDF': 7, 'LEDA': 7}
+# Integration steps used for every OD/FP read (see measure_od / measure_fp calls).
+_AS7341_ISTEPS = 255
+
 
 def csvData(M):
     #Used to format current data and write a new row to CSV file output. To record an
@@ -286,6 +315,64 @@ def csvData(M):
             if new_file:
                 writer.writeheader()
             writer.writerow(data)
+    finally:
+        lock.release()
+
+
+def _git_hash():
+    #Short git commit of the running code, for reproducibility. 'unknown' if the run
+    #dir isn't a git checkout or git isn't installed (never fail an experiment over it).
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        out = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=here,
+                                      stderr=subprocess.DEVNULL)
+        return out.decode().strip()
+    except Exception:
+        return 'unknown'
+
+
+def experimentMetadata(M):
+    #Builds the self-describing metadata dict written alongside each experiment CSV:
+    #device ID, OD/FP calibration + sensor settings actually in use, per-column units,
+    #software git hash and start time. Makes a dataset reproducible on its own.
+    M=str(M)
+    ODdevice=sysData[M]['OD']['device']
+    return {
+        'device': M,
+        'device_id': sysData[M].get('DeviceID'),
+        'led_hardware_version': sysData[M].get('Version', {}).get('LED'),
+        'start_time': sysData[M]['Experiment']['startTime'],
+        'software_git_hash': _git_hash(),
+        'integration_steps': _AS7341_ISTEPS,
+        'od': {
+            'device': ODdevice,
+            'gain': _OD_GAIN_BY_DEVICE.get(ODdevice),
+            'calibration': dict(sysData[M]['OD0']),  # LASERa/b, LEDFa, LEDAa, blank target, ...
+        },
+        'fluorescence': {
+            FP: {
+                'on': sysData[M][FP]['ON'],
+                'led': sysData[M][FP]['LED'],
+                'gain': sysData[M][FP]['Gain'],
+                'base_band': sysData[M][FP]['BaseBand'],
+                'emit1_band': sysData[M][FP]['Emit1Band'],
+                'emit2_band': sysData[M][FP]['Emit2Band'],
+            } for FP in ['FP1', 'FP2', 'FP3']
+        },
+        'column_units': _CSV_COLUMN_UNITS,
+    }
+
+
+def writeExperimentMetadata(M):
+    #Writes the metadata sidecar once, next to the CSV (same name, _meta.json). Called
+    #at experiment start. Uses the bus lock like csvData so a file write never races I2C.
+    M=str(M)
+    filename = sysData[M]['Experiment']['startTime'] + '_' + M + '_meta.json'
+    filename = filename.replace(":", "_")
+    lock.acquire()
+    try:
+        with io.open(filename, 'w') as f:
+            json.dump(experimentMetadata(M), f, indent=2, sort_keys=True, default=str)
     finally:
         lock.release()
 

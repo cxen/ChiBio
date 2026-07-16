@@ -867,6 +867,10 @@ def ExperimentStartStop(M,value):
             timeString=now.strftime("%Y-%m-%d %H:%M:%S")
             sysData[M]['Experiment']['startTime']=timeString
             sysData[M]['Experiment']['startTimeRaw']=now
+            # Write the self-describing metadata sidecar once, next to the CSV. Only on a
+            # fresh start (cycles==0), not on resume — matches when a new CSV is created.
+            from chibio_control_helpers import writeExperimentMetadata
+            writeExperimentMetadata(M)
 
         sysData[M]['Pump1']['direction']=1.0 #Sets pumps to go forward.
         sysData[M]['Pump2']['direction']=1.0
