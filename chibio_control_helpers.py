@@ -211,59 +211,64 @@ def LightActuation(M,toggle):
     return 0
 
 
+# Maps each recorded LED to its CSV column name. The column names encode the
+# LED's wavelength/type; the sysData keys (LEDA..LASER650) are hardware channels.
+_CSV_LED_COLUMNS = [
+    ('LEDA', 'LED_395nm_setpoint'), ('LEDB', 'LED_457nm_setpoint'),
+    ('LEDC', 'LED_500nm_setpoint'), ('LEDD', 'LED_523nm_setpoint'),
+    ('LEDE', 'LED_595nm_setpoint'), ('LEDF', 'LED_623nm_setpoint'),
+    ('LEDG', 'LED_6500K_setpoint'), ('LEDH', 'LED_600nm_setpoint'),
+    ('LEDI', 'LED_550nm_setpoint'), ('LEDV', 'LED_White_setpoint'),
+    ('LASER650', 'laser_setpoint'),
+]
+
+
 def csvData(M):
-    #Used to format current data and write a new row to CSV file output. Note if you want to record any additional parameters/measurements then they need to be added to this function.
+    #Used to format current data and write a new row to CSV file output. To record an
+    #extra measurement, add ONE `data[...] =` line below: DictWriter keys the value to
+    #its column by name, so header and row can no longer drift out of sync (the old
+    #parallel fieldnames/row lists could, which silently dropped the header).
     M=str(M)
 
-    fieldnames = ['exp_time','od_measured','od_setpoint','od_zero_setpoint','thermostat_setpoint','heating_rate',
-                  'internal_air_temp','external_air_temp','media_temp','opt_gen_act_int','pump_1_rate','pump_2_rate',
-                  'pump_3_rate','pump_4_rate','media_vol','stirring_rate','LED_395nm_setpoint','LED_457nm_setpoint',
-                  'LED_500nm_setpoint','LED_523nm_setpoint','LED_595nm_setpoint','LED_623nm_setpoint',
-                  'LED_6500K_setpoint','LED_600nm_setpoint','LED_550nm_setpoint','LED_White_setpoint','laser_setpoint',
-                  'LED_UV_int','FP1_base','FP1_emit1','FP1_emit2','FP2_base','FP2_emit1','FP2_emit2','FP3_base',
-                  'FP3_emit1','FP3_emit2','custom_prog_param1','custom_prog_param2','custom_prog_param3',
-                  'custom_prog_status','zigzag_target','growth_rate']
-
-    row=[sysData[M]['time']['record'][-1],
-        sysData[M]['OD']['record'][-1],
-        sysData[M]['OD']['targetrecord'][-1],
-        sysData[M]['OD0']['target'],
-        sysData[M]['Thermostat']['record'][-1],
-        sysData[M]['Heat']['target']*float(sysData[M]['Heat']['ON']),
-        sysData[M]['ThermometerInternal']['record'][-1],
-        sysData[M]['ThermometerExternal']['record'][-1],
-        sysData[M]['ThermometerIR']['record'][-1],
-        sysData[M]['Light']['record'][-1],
-        sysData[M]['Pump1']['record'][-1],
-        sysData[M]['Pump2']['record'][-1],
-        sysData[M]['Pump3']['record'][-1],
-        sysData[M]['Pump4']['record'][-1],
-        sysData[M]['Volume']['target'],
-        sysData[M]['Stir']['target']*sysData[M]['Stir']['ON'],]
-    for LED in ['LEDA','LEDB','LEDC','LEDD','LEDE','LEDF','LEDG','LEDH','LEDI','LEDV','LASER650']:
-        row=row+[sysData[M][LED]['target']]
-    row=row+[sysData[M]['UV']['target']*sysData[M]['UV']['ON']]
+    data = {
+        'exp_time': sysData[M]['time']['record'][-1],
+        'od_measured': sysData[M]['OD']['record'][-1],
+        'od_setpoint': sysData[M]['OD']['targetrecord'][-1],
+        'od_zero_setpoint': sysData[M]['OD0']['target'],
+        'thermostat_setpoint': sysData[M]['Thermostat']['record'][-1],
+        'heating_rate': sysData[M]['Heat']['target']*float(sysData[M]['Heat']['ON']),
+        'internal_air_temp': sysData[M]['ThermometerInternal']['record'][-1],
+        'external_air_temp': sysData[M]['ThermometerExternal']['record'][-1],
+        'media_temp': sysData[M]['ThermometerIR']['record'][-1],
+        'opt_gen_act_int': sysData[M]['Light']['record'][-1],
+        'pump_1_rate': sysData[M]['Pump1']['record'][-1],
+        'pump_2_rate': sysData[M]['Pump2']['record'][-1],
+        'pump_3_rate': sysData[M]['Pump3']['record'][-1],
+        'pump_4_rate': sysData[M]['Pump4']['record'][-1],
+        'media_vol': sysData[M]['Volume']['target'],
+        'stirring_rate': sysData[M]['Stir']['target']*sysData[M]['Stir']['ON'],
+    }
+    for LED, col in _CSV_LED_COLUMNS:
+        data[col] = sysData[M][LED]['target']
+    data['LED_UV_int'] = sysData[M]['UV']['target']*sysData[M]['UV']['ON']
     for FP in ['FP1','FP2','FP3']:
-        if sysData[M][FP]['ON']==1:
-            row=row+[sysData[M][FP]['Base']]
-            row=row+[sysData[M][FP]['Emit1']]
-            row=row+[sysData[M][FP]['Emit2']]
-        else:
-            row=row+([0.0, 0.0, 0.0])
-
-    row=row+[sysData[M]['Custom']['param1']*float(sysData[M]['Custom']['ON'])]
-    row=row+[sysData[M]['Custom']['param2']*float(sysData[M]['Custom']['ON'])]
-    row=row+[sysData[M]['Custom']['param3']*float(sysData[M]['Custom']['ON'])]
-    row=row+[sysData[M]['Custom']['Status']*float(sysData[M]['Custom']['ON'])]
-    row=row+[sysData[M]['Zigzag']['target']*float(sysData[M]['Zigzag']['ON'])]
-    row=row+[sysData[M]['GrowthRate']['current']*sysData[M]['Zigzag']['ON']]
+        on = sysData[M][FP]['ON']==1
+        data[FP+'_base']  = sysData[M][FP]['Base']  if on else 0.0
+        data[FP+'_emit1'] = sysData[M][FP]['Emit1'] if on else 0.0
+        data[FP+'_emit2'] = sysData[M][FP]['Emit2'] if on else 0.0
+    data['custom_prog_param1'] = sysData[M]['Custom']['param1']*float(sysData[M]['Custom']['ON'])
+    data['custom_prog_param2'] = sysData[M]['Custom']['param2']*float(sysData[M]['Custom']['ON'])
+    data['custom_prog_param3'] = sysData[M]['Custom']['param3']*float(sysData[M]['Custom']['ON'])
+    data['custom_prog_status'] = sysData[M]['Custom']['Status']*float(sysData[M]['Custom']['ON'])
+    data['zigzag_target'] = sysData[M]['Zigzag']['target']*float(sysData[M]['Zigzag']['ON'])
+    data['growth_rate'] = sysData[M]['GrowthRate']['current']*sysData[M]['Zigzag']['ON']
 
     #Following can be uncommented if you are recording ALL spectra for e.g. biofilm experiments
     #bands=['nm410' ,'nm440','nm470','nm510','nm550','nm583','nm620','nm670','CLEAR','NIR']
     #items= ['LEDA','LEDB','LEDC','LEDD','LEDE','LEDF','LEDG','LASER650']
     #for item in items:
     #   for band in bands:
-    #       row=row+[sysData[M]['biofilm'][item][band]]
+    #       data[item+'_'+band] = sysData[M]['biofilm'][item][band]
 
     filename = sysData[M]['Experiment']['startTime'] + '_' + M + '_data' + '.csv'
     filename=filename.replace(":","_")
@@ -275,17 +280,12 @@ def csvData(M):
 
     lock.acquire() #We are avoiding writing to a file at the same time as we do digital communications, since it might potentially cause the computer to lag and consequently data transfer to fail.
     try:
-        if os.path.isfile(filename) is False: #Only if we are starting a fresh file
-            if (len(row) == len(fieldnames)):  #AND the fieldnames match up with what is being written.
-                with open_csv_append(filename) as csvFile:
-                    writer = csv.writer(csvFile)
-                    writer.writerow(fieldnames)
-            else:
-                print('CSV_WRITER: mismatch between column num and header num')
-
-        with open_csv_append(filename) as csvFile: # Here we append the new data to our CSV file.
-            writer = csv.writer(csvFile)
-            writer.writerow(row)
+        new_file = os.path.isfile(filename) is False #Only write the header when starting a fresh file.
+        with open_csv_append(filename) as csvFile:
+            writer = csv.DictWriter(csvFile, fieldnames=list(data.keys()))
+            if new_file:
+                writer.writeheader()
+            writer.writerow(data)
     finally:
         lock.release()
 

@@ -57,7 +57,7 @@ New track from the 2026-07-14 improvement review — data-quality and UI enhance
 - [ ] **Replicate + median for OD/FP.** Take ~3 flashes per measurement, record the median as the value, **and record the spread/error** (std dev or min–max) so measurement noise is captured, not discarded.
 
 ### Data collection (`chibio_control_helpers.py`)
-- [ ] **CSV via `csv.DictWriter`.** Replace the parallel `fieldnames`/`row` lists (must be equal length or the header is silently dropped) with a dict keyed by name. Kills that whole bug class and makes adding a field one edit. Do this early — the sensor items above each add columns (gain, raw+corrected, error/spread).
+- [x] **CSV via `csv.DictWriter`.** Replaced the parallel `fieldnames`/`row` lists with a single ordered `data` dict + `csv.DictWriter`. Column order/names preserved exactly (43 columns). Adding a field is now one `data[...] =` line; header/row can't drift. Verified byte-identical to the old lists via `test_csv_equivalence.py` (off-device, both FP on/off branches); imports cleanly on device Python 3.7.3. CLAUDE.md convention note updated.
 - [ ] **Per-experiment metadata sidecar.** Write a JSON next to each CSV: device ID, calibration constants used, units per column, software git hash, start time, and sensor settings (gain/integration). Makes datasets self-describing and reproducible.
 
 ### GUI (`templates/index.html`, `static/`)
