@@ -57,22 +57,6 @@ def run_background(target, *args, **kwargs):
     return thread
 
 
-def resolve_device_id(M):
-    M = str(M)
-    if (M == "0"):
-        return sysItems['UIDevice']
-    return M
-
-
-def get_device_item(M, item):
-    if M not in sysData:
-        return None, jsonify({'error': 'Unknown device'}), 404
-    if item not in sysData[M]:
-        return None, jsonify({'error': 'Unknown item'}), 404
-    return sysData[M][item], None, None
-   
-
-
 def initialise(M):
     #Function that initialises all parameters / clears stored values for a given device.
     #If you want to record/add values to sysData, recommend adding an initialisation line in here.

@@ -37,7 +37,7 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
   - **Access / auth:** point-to-point USB is token-free; remote/LAN needs the token — open once with `?token=…`, cookie keeps it seamless after (see `chibio_auth.py`). Note HTTP-only caveat.
   - **UI:** dark-mode toggle.
   - **Dev/test:** rsync-deploy flow (device has no `git pull`); `device_selftest.py` for before/after I2C verification; note I2C now runs on `smbus2` (Adafruit_GPIO removed), GPIO/PWM still on Adafruit_BBIO.
-- [ ] **Delete dead scaffolding** `resolve_device_id` / `get_device_item` (`app.py:60/67`) — defined, never called. Or wire them in as the input validation they look intended for.
+- [x] **Delete dead scaffolding** `resolve_device_id` / `get_device_item` (`app.py:60/67`) — defined, never called. Deleted (YAGNI; `M=="0"` normalization is already done inline where needed). Verified on device: server boots and `device_selftest.py` passes 8/8 on M0/M1.
 - [x] **Remove unused `import serial`** (`app.py:20`). Done — never used anywhere (traced to the first commit, carried through the refactor); Chi.Bio is I2C-only. Also dropped `pip3 install serial` from `setup.sh` (it installed the wrong package, `serial` not `pyserial`, for this unused import).
 
 ## P4 — Optional / larger (robustness direction)
