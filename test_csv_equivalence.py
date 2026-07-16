@@ -27,7 +27,7 @@ def rec(v):
 # --- synthetic device state: one unique number per field csvData reads ---
 sd['time'] = rec(111.0)
 sd['OD'] = {'record': [0.0, 0.42], 'targetrecord': [0.0, 0.30]}
-sd['OD0'] = {'target': 0.05}
+sd['OD0'] = {'target': 0.05, 'raw': 29000.0, 'dark': 100.0, 'rawCorrected': 28900.0}
 sd['Thermostat'] = rec(37.5)
 sd['Heat'] = {'target': 0.8, 'ON': 1}
 sd['ThermometerInternal'] = rec(25.1)
@@ -87,11 +87,18 @@ with tempfile.TemporaryDirectory() as tmp:
     with open(fname, newline='') as f:
         rows = list(csv.reader(f))
 
-assert rows[0] == exp_fieldnames, "header mismatch:\n new=%s\n old=%s" % (rows[0], exp_fieldnames)
+# The DictWriter refactor + dark-transmission columns must leave EVERY original
+# column's value unchanged; new columns (od_transmission_*) may be added.
 assert len(rows) == 3, "expected header + 2 data rows, got %d rows" % len(rows)
-got = rows[1]
-expected_str = [str(v) for v in exp_row]
-assert got == expected_str, "row mismatch:\n new=%s\n old=%s" % (got, expected_str)
-assert rows[2] == got, "second appended row should match the first"
+new = dict(zip(rows[0], rows[1]))
+expected = dict(zip(exp_fieldnames, [str(v) for v in exp_row]))
+for name in exp_fieldnames:
+    assert name in new, "original column %r disappeared" % name
+    assert new[name] == expected[name], "column %r changed: new=%r old=%r" % (name, new[name], expected[name])
+assert rows[2] == rows[1], "second appended row should match the first"
 
-print("PASS: DictWriter csvData is byte-identical to the old lists (%d columns, FP on+off both covered)" % len(exp_fieldnames))
+added = [c for c in rows[0] if c not in exp_fieldnames]
+assert set(added) == {'od_transmission_raw', 'od_transmission_dark', 'od_transmission_corrected'}, \
+    "unexpected column changes: %s" % added
+print("PASS: all %d original columns unchanged; added %d dark-transmission columns" % (
+    len(exp_fieldnames), len(added)))

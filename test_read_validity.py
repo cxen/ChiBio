@@ -69,7 +69,7 @@ def write_and_read():
 # minimal state csvData needs
 sd['time'] = {'record': [0.0, 1.0]}
 sd['OD'] = {'record': [0.0, 0.42], 'targetrecord': [0.0, 0.3], 'valid': 1}
-sd['OD0'] = {'target': 30000.0}
+sd['OD0'] = {'target': 30000.0, 'raw': 29000.0, 'dark': 100.0, 'rawCorrected': 28900.0}
 sd['Thermostat'] = {'record': [0.0, 37.0]}
 sd['Heat'] = {'target': 0.0, 'ON': 0}
 for t in ('ThermometerInternal', 'ThermometerExternal', 'ThermometerIR'):
@@ -92,12 +92,15 @@ sd['Experiment'] = {'startTime': 'exp'}
 # --- 3. OD valid -> real value; OD invalid -> NaN ---
 row = write_and_read()
 assert row['od_measured'] == '0.42', "valid OD should log the real value, got %r" % row['od_measured']
+assert row['od_transmission_raw'] == '29000.0'
+assert row['od_transmission_corrected'] == '28900.0', "corrected = raw - dark = 29000 - 100"
 assert row['FP1_base'] == '100.0'
 
 sd['OD']['valid'] = 0
 sd['FP2']['valid'] = 0  # one active FP fails
 row = write_and_read()
 assert math.isnan(float(row['od_measured'])), "invalid OD must be NaN, got %r" % row['od_measured']
+assert math.isnan(float(row['od_transmission_corrected'])), "invalid OD -> dark-corrected transmission NaN too"
 assert math.isnan(float(row['FP2_base'])), "invalid FP2 base must be NaN"
 assert math.isnan(float(row['FP2_emit1'])), "invalid FP2 emit1 must be NaN"
 assert row['FP1_base'] == '100.0', "FP1 still valid -> real value"

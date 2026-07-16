@@ -159,6 +159,8 @@ def initialise(M):
     sysData[M]['OD']['target']=sysData[M]['OD']['default']
     sysData[M]['OD0']['target']=65000.0
     sysData[M]['OD0']['raw']=65000.0
+    sysData[M]['OD0']['dark']=0.0          #DARK-channel background measured alongside the OD read.
+    sysData[M]['OD0']['rawCorrected']=65000.0  #raw transmission minus dark (kept separate; raw is never overwritten).
     sysData[M]['OD']['device']='LASER650'
 
     sysData[M]['Volume']['target']=20.0

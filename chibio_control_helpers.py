@@ -229,6 +229,7 @@ _CSV_LED_COLUMNS = [
 # = 0..1 duty/intensity, "counts" = raw ADC counts, "ratio" = emit/base.
 _CSV_COLUMN_UNITS = {
     'exp_time': 's', 'od_measured': 'OD', 'od_setpoint': 'OD', 'od_zero_setpoint': 'counts',
+    'od_transmission_raw': 'counts', 'od_transmission_dark': 'counts', 'od_transmission_corrected': 'counts',
     'thermostat_setpoint': 'C', 'heating_rate': 'frac', 'internal_air_temp': 'C',
     'external_air_temp': 'C', 'media_temp': 'C', 'opt_gen_act_int': 'bool',
     'pump_1_rate': 'frac', 'pump_2_rate': 'frac', 'pump_3_rate': 'frac', 'pump_4_rate': 'frac',
@@ -259,13 +260,19 @@ def csvData(M):
     #parallel fieldnames/row lists could, which silently dropped the header).
     M=str(M)
 
+    # NaN marks a failed spectrometer read so it's distinguishable in analysis; sysData
+    # itself stays numeric (see sensor-failure-semantics). Only the CSV cell goes NaN.
+    od_invalid = sysData[M]['OD'].get('valid',1)==0
     data = {
         'exp_time': sysData[M]['time']['record'][-1],
-        # NaN marks a failed spectrometer read so it's distinguishable in analysis; sysData
-        # itself stays numeric (see sensor-failure-semantics). Only the CSV cell goes NaN.
-        'od_measured': float('nan') if sysData[M]['OD'].get('valid',1)==0 else sysData[M]['OD']['record'][-1],
+        'od_measured': float('nan') if od_invalid else sysData[M]['OD']['record'][-1],
         'od_setpoint': sysData[M]['OD']['targetrecord'][-1],
         'od_zero_setpoint': sysData[M]['OD0']['target'],
+        # Raw CLEAR transmission, the DARK background, and dark-corrected (raw - dark), all
+        # in ADC counts. Raw is never overwritten; corrected is additive for analysis.
+        'od_transmission_raw': float('nan') if od_invalid else sysData[M]['OD0']['raw'],
+        'od_transmission_dark': float('nan') if od_invalid else sysData[M]['OD0'].get('dark',0.0),
+        'od_transmission_corrected': float('nan') if od_invalid else sysData[M]['OD0'].get('rawCorrected', sysData[M]['OD0']['raw']),
         'thermostat_setpoint': sysData[M]['Thermostat']['record'][-1],
         'heating_rate': sysData[M]['Heat']['target']*float(sysData[M]['Heat']['ON']),
         'internal_air_temp': sysData[M]['ThermometerInternal']['record'][-1],

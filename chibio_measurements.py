@@ -8,6 +8,14 @@ from chibio_state import sysData, sysItems
 logger = logging.getLogger('chibio')
 
 
+def _record_od_dark(M, out):
+    #out[0]=CLEAR transmission (raw), out[1]=the DARK background channel measured in the
+    #same read. Keep raw untouched (never overwrite it); store the dark value and the
+    #dark-corrected transmission separately so analysis can use either. See TODO P5.
+    sysData[M]['OD0']['dark']=float(out[1])
+    sysData[M]['OD0']['rawCorrected']=float(out[0])-float(out[1])
+
+
 def measure_od(M):
     #Measures laser transmission and calculates calibrated OD from this.
     M=str(M)
@@ -15,8 +23,9 @@ def measure_od(M):
         M=sysItems['UIDevice']
     device=sysData[M]['OD']['device']
     if (device=='LASER650'):
-        out=get_transmission(M,'LASER650',['CLEAR'],1,255)
+        out=get_transmission(M,'LASER650',['CLEAR','DARK'],1,255)
         sysData[M]['OD0']['raw']=float(out[0])
+        _record_od_dark(M,out)
 
         a=sysData[M]['OD0']['LASERa']#Retrieve the calibration factors for OD.
         b=sysData[M]['OD0']['LASERb']
@@ -27,9 +36,10 @@ def measure_od(M):
             sysData[M]['OD']['current']=0
             print(' OD Measurement close to 0 on ' + str(device))
     elif (device=='LEDF'):
-        out=get_transmission(M,'LEDF',['CLEAR'],7,255)
+        out=get_transmission(M,'LEDF',['CLEAR','DARK'],7,255)
 
         sysData[M]['OD0']['raw']=out[0]
+        _record_od_dark(M,out)
         a=sysData[M]['OD0']['LEDFa']#Retrieve the calibration factors for OD.
         try:
             if (M=='M0'):
@@ -49,9 +59,10 @@ def measure_od(M):
             logger.exception('OD measurement failed on %s', device)
 
     elif (device=='LEDA'):
-        out=get_transmission(M,'LEDA',['CLEAR'],7,255)
+        out=get_transmission(M,'LEDA',['CLEAR','DARK'],7,255)
 
         sysData[M]['OD0']['raw']=out[0]
+        _record_od_dark(M,out)
         a=sysData[M]['OD0']['LEDAa']#Retrieve the calibration factors for OD.
         try:
             if (M=='M0'):
