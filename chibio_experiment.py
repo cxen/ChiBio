@@ -287,6 +287,15 @@ def Zigzag(M):
     return
 
 
+def _median_and_spread(vals):
+    #Median (robust central value, resists a single outlier flash) and spread (max - min)
+    #of a short list of replicate reads. No numpy needed for these tiny lists.
+    s=sorted(vals)
+    n=len(s)
+    median=s[n//2] if n%2 else (s[n//2-1]+s[n//2])/2.0
+    return median, (s[-1]-s[0])
+
+
 def runExperiment(M, placeholder):
     #Primary function for running an automated experiment.
     from app import (
@@ -322,18 +331,42 @@ def runExperiment(M, placeholder):
 
             sysData[M]['OD']['Measuring']=1 #Begin measuring - this flag is just to indicate that a measurement is currently being taken.
 
-            #We now meausre OD 4 times and take the average to reduce noise when in auto mode!
-            ODV=0.0
-            for i in [0, 1, 2, 3]:
+            #Measure OD 3 times and take the MEDIAN (robust to the occasional outlier read)
+            #plus the spread, instead of a plain mean, so measurement noise is recorded rather
+            #than averaged away. The median feeds RegulateOD and the CSV. Invalid if any read failed.
+            ODreadings=[]
+            od_valid=1
+            for i in [0, 1, 2]:
                 measure_od(M)
-                ODV=ODV+sysData[M]['OD']['current']
+                ODreadings.append(sysData[M]['OD']['current'])
+                od_valid=od_valid and sysData[M]['OD'].get('valid',1)
                 time.sleep(0.25)
-            sysData[M]['OD']['current']=ODV/4.0
+            sysData[M]['OD']['current'], sysData[M]['OD']['spread']=_median_and_spread(ODreadings)
+            sysData[M]['OD']['valid']=od_valid
 
             measure_temp(M,'Internal') #Measuring all temperatures
             measure_temp(M,'External')
             measure_temp(M,'IR')
-            measure_fp(M) #And now fluorescent protein concentrations.
+
+            #Replicate FP the same way: 3 flashes per active FP, record the median of each
+            #channel and the spread (from the base signal). measure_fp handles all active FPs
+            #per call; when none are on it's a cheap no-op so we keep the single-call path.
+            fp_series={FP:{'Base':[],'Emit1':[],'Emit2':[]} for FP in ['FP1','FP2','FP3'] if sysData[M][FP]['ON']==1}
+            if fp_series:
+                fp_valid={FP:1 for FP in fp_series}
+                for i in [0, 1, 2]:
+                    measure_fp(M)
+                    for FP in fp_series:
+                        for key in ('Base','Emit1','Emit2'):
+                            fp_series[FP][key].append(sysData[M][FP][key])
+                        fp_valid[FP]=fp_valid[FP] and sysData[M][FP].get('valid',1)
+                for FP in fp_series:
+                    for key in ('Base','Emit1','Emit2'):
+                        sysData[M][FP][key], _=_median_and_spread(fp_series[FP][key])
+                    _, sysData[M][FP]['spread']=_median_and_spread(fp_series[FP]['Base'])
+                    sysData[M][FP]['valid']=fp_valid[FP]
+            else:
+                measure_fp(M) #And now fluorescent protein concentrations.
 
             if (sysData[M]['Experiment']['ON']==0): #We do another check post-measurement to see whether we need to end the experiment.
                 turnEverythingOff(M)

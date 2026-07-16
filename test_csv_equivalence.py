@@ -98,8 +98,9 @@ for name in exp_fieldnames:
 assert rows[2] == rows[1], "second appended row should match the first"
 
 added = [c for c in rows[0] if c not in exp_fieldnames]
-assert set(added) == {'od_transmission_raw', 'od_transmission_dark', 'od_transmission_corrected',
-                      'FP1_gain_used', 'FP2_gain_used', 'FP3_gain_used'}, \
+assert set(added) == {'od_transmission_raw', 'od_transmission_dark', 'od_transmission_corrected', 'od_spread',
+                      'FP1_gain_used', 'FP2_gain_used', 'FP3_gain_used',
+                      'FP1_spread', 'FP2_spread', 'FP3_spread'}, \
     "unexpected column changes: %s" % added
 print("PASS: all %d original columns unchanged; added %d new columns (dark-transmission + FP gain)" % (
     len(exp_fieldnames), len(added)))

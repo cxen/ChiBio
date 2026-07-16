@@ -198,9 +198,11 @@ def initialise(M):
     sysData[M]['AS7341']['current']['valid']=1
     sysData[M]['AS7341']['current']['gain']=0  #Gain actually used on the last read (auto-ranging updates it).
     sysData[M]['OD']['valid']=1
+    sysData[M]['OD']['spread']=0.0  #max-min of the replicate OD reads (measurement noise).
     for FP in ['FP1','FP2','FP3']:
         sysData[M][FP]['valid']=1
         sysData[M][FP]['GainUsed']=int(sysData[M][FP]['Gain'][1:])  #gain the last FP read landed on
+        sysData[M][FP]['spread']=0.0  #max-min of the replicate FP base reads.
 
     sysData[M]['ThermometerInternal']['current']=0.0
     sysData[M]['ThermometerExternal']['current']=0.0
