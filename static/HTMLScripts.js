@@ -618,45 +618,9 @@ function updateData(data){
           document.getElementById("GraphReplot").value=data.time.record.length;
           document.getElementById("FPRefresh").innerHTML = data.UIDevice
 
-          var x =data.time.record.toString()
-          var y=data.OD.record.toString()
-          //drawChart(x,x,'cat','dog');
-          drawChart2(2,1,data.time.record.toString(),data.OD.record.toString(),data.OD.targetrecord.toString(),"","","","",'Time (h)','Optical Density','OD,Target')
-          drawChart2(4,2,data.time.record.toString(),data.ThermometerIR.record.toString(),data.Thermostat.record.toString(),data.ThermometerInternal.record.toString(),data.ThermometerExternal.record.toString(),"","",'Time (h)','Temperature (C)','Culture Temperature,Target,Internal Air, External Air')
-          drawChart2(1,3,data.time.record.toString(),data.Pump1.record.toString(),"" ,"","","","",'Time (h)','Pump Rate','Pump 1 (Input),')
-		  
-			  
-		
-          //drawChart2(2,3,data.time.record.toString(),data.Pump1.record.toString(),data.Pump2.record.toString()  ,"","","","",'Time (h)','Pump Rate','Pump 1, Pump 2')
-          //data.Pump2.record.toString()   <-- removed from above line.
-          
-          
-          
-          if(document.getElementById("FPEmit1B").value=="OFF"){
-                drawChart2(1,4,data.time.record.toString(),data.FP1.Emit1Record.toString(),"","","","","",'Time (h)','Normalised FP Emission','Emission Band 1')
-              
-          } else{
-                drawChart2(2,4,data.time.record.toString(),data.FP1.Emit1Record.toString(),data.FP1.Emit2Record.toString(),"","","","",'Time (h)','Normalised FP Emission','Emission Band 1, Emission Band 2')    
-          }
-          
-            if(document.getElementById("FPEmit2B").value=="OFF"){
-                drawChart2(1,5,data.time.record.toString(),data.FP2.Emit1Record.toString(),"","","","","",'Time (h)','Normalised FP Emission','Emission Band 1')
-              
-          } else{
-            drawChart2(2,5,data.time.record.toString(),data.FP2.Emit1Record.toString(),data.FP2.Emit2Record.toString(),"","","","",'Time (h)','Normalised FP Emission','Emission Band 1, Emission Band 2')
-          }
-          
-           if(document.getElementById("FPEmit3B").value=="OFF"){
-                drawChart2(1,6,data.time.record.toString(),data.FP3.Emit1Record.toString(),"","","","","",'Time (h)','Normalised FP Emission','Emission Band 1')
-              
-          } else{
-            drawChart2(2,6,data.time.record.toString(),data.FP3.Emit1Record.toString(),data.FP3.Emit2Record.toString(),"","","","",'Time (h)','Normalised FP Emission','Emission Band 1, Emission Band 2')
-          }
-		  
-		  
-		    if (data.Zigzag.ON==1){
-		  drawChart2(1,7,data.time.record.toString(),data.GrowthRate.record.toString(),"" ,"","","","",'Time (h)','Growth Rate','Growth Rate,')
-		  }
+window._lastSysData = data;
+          redrawCharts(data);
+
 		  
 
         }
@@ -669,75 +633,142 @@ function updateData(data){
 
 
 
-function drawChart2(num,plotID,data_x,data_y1,data_y2,data_y3,data_y4,data_y5,data_y6,xlabel,ylabel,DataNames) {
-    var data = new google.visualization.DataTable();
-    
-    data.addColumn('number', xlabel);
-    DataNames=DataNames.split(",")
-    var ToPlot=data_x.split(",").map(Number);
-    
-    Array.prototype.zip = function (arr) {
-         return this.map(function (e, i) {
-            return [e, arr[i]];
-         })
-      };
-     
-     
-     var myarray=new Array(ToPlot.length)
-     for (i=0; i < ToPlot.length; i++){
-        myarray[i]=new Array(num+1)
-        myarray[i][0]=ToPlot[i]/3600.0;
-     }
-     
-    for (var i=0;i<num;i++){
-      data.addColumn('number', DataNames[i]);
-      var yin = eval("data_y"+ (i+1))
-      var data_y=yin.split(",").map(Number);
-      for (j=0; j < ToPlot.length; j++){
-           myarray[j][i+1]=data_y[j];
-      }
-      //ToPlot=ToPlot.zip(data_y);
-    }
-    
-      
-      data.addRows(myarray)
-      
-    
-     var options = {
-        height: 400,
-            
-        hAxis: {
-         title: xlabel
-        },
-        vAxis: {
-         title: ylabel
-        },
-        legend: {position: 'top', alignment: 'end'},
-        chartArea: {width: '80%'}
-      };
-      
-      if (charts[plotID] === undefined || charts[plotID] === null) {
-          charts[plotID] = new google.visualization.LineChart(document.getElementById('chart_div'+plotID));
-   } else {
-          charts[plotID].clearChart(); //We are doing this (clearing the chart each iteration) to avoid a memory leak in Google Charts!
-   }
-   
-   
+// ===================== uPlot charting (self-hosted; replaces Google Charts) =====================
+// Charts are created once and updated in place via setData() each poll -- there is no
+// per-cycle destroy/rebuild, so the old Google-Charts memory-leak workaround is gone. Colours
+// come from a dataviz-validated categorical palette (blue/green/magenta); light and dark are
+// both selected, not an auto-flip, and charts re-theme when the toggle flips.
+var uplots = {};
+var uplotKey = {};
 
-
-    charts[plotID].draw(data, options);
-	
-	data={};
-
-
-
-
-      
-    
-   
-    
-
+function chartTheme(){
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    dark:   dark,
+    text:   dark ? '#e8e8e6' : '#0b0b0b',
+    muted:  dark ? '#9a998f' : '#6b6a66',
+    grid:   dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)',
+    series: dark ? ['#3987e5','#008300','#d55181'] : ['#2a78d6','#008300','#e87ba4'],
+    band:   dark ? 'rgba(57,135,229,0.20)' : 'rgba(42,120,214,0.13)'
+  };
 }
 
+function roleColor(th, role){
+  if (role === 'muted') return th.muted;
+  return th.series[ role === 's1' ? 1 : role === 's2' ? 2 : 0 ];
+}
 
+function toHours(arr){
+  var out = new Array(arr.length);
+  for (var i = 0; i < arr.length; i++) out[i] = arr[i] / 3600.0;
+  return out;
+}
 
+// seriesDefs: [{label, data, role:'s0'|'s1'|'s2'|'muted', width, dash, hidden}]
+// band (optional): {series:[hiIdx, loIdx], fill}
+function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
+  var el = document.getElementById('chart_div' + plotID);
+  if (!el) return;
+
+  var data = [x];
+  for (var i = 0; i < seriesDefs.length; i++) data.push(seriesDefs[i].data);
+
+  // Rebuild only when theme / series identity / band presence changes; otherwise setData.
+  var key = th.dark + '|' + ylabel + '|' +
+            seriesDefs.map(function(s){ return s.label; }).join(',') + '|' + (band ? 'B' : '');
+  if (uplots[plotID] && uplotKey[plotID] === key){
+    uplots[plotID].setData(data);
+    return;
+  }
+  if (uplots[plotID]) uplots[plotID].destroy();
+
+  var uSeries = [{}];
+  for (var j = 0; j < seriesDefs.length; j++){
+    var s = seriesDefs[j];
+    uSeries.push({
+      label:  s.label,
+      stroke: s.hidden ? 'rgba(0,0,0,0)' : roleColor(th, s.role),
+      width:  s.hidden ? 0 : (s.width || 2),
+      dash:   s.dash ? [6, 4] : undefined,
+      points: { show: false }
+    });
+  }
+
+  var opts = {
+    width:  Math.max(260, el.clientWidth || (el.parentNode ? el.parentNode.clientWidth : 0) || 600),
+    height: 300,
+    scales: { x: { time: false } },
+    axes: [
+      { stroke: th.muted, grid: { stroke: th.grid, width: 1 }, ticks: { stroke: th.grid, width: 1 }, font: '12px sans-serif' },
+      { label: ylabel, stroke: th.muted, grid: { stroke: th.grid, width: 1 }, ticks: { stroke: th.grid, width: 1 }, font: '12px sans-serif', labelFont: '13px sans-serif' }
+    ],
+    series: uSeries,
+    legend: { show: true }
+    // uPlot's default cursor already draws a crosshair and shows live values in the legend
+    // on hover -- the dataviz "hover layer". A custom cursor.focus needs extra DOM setup.
+  };
+  if (band) opts.bands = [{ series: band.series, fill: band.fill }];
+
+  uplots[plotID] = new uPlot(opts, data, el);
+  uplotKey[plotID] = key;
+}
+
+function drawFPChart(plotID, th, hours, fp, emit2ElId){
+  var series = [{ label: 'Emission Band 1', data: fp.Emit1Record, role: 's0', width: 2 }];
+  var e2 = document.getElementById(emit2ElId);
+  if (e2 && e2.value !== 'OFF')
+    series.push({ label: 'Emission Band 2', data: fp.Emit2Record, role: 's1', width: 1.5 });
+  drawUplot(plotID, th, 'Normalised FP Emission', hours, series);
+}
+
+function redrawCharts(data){
+  var th = chartTheme();
+  var hours = toHours(data.time.record);
+
+  // OD: median (the control value) with a spread band, the dark-corrected trace, and target.
+  var od = data.OD.record;
+  var spread = data.OD.spreadRecord || [];
+  var hi = new Array(od.length), lo = new Array(od.length);
+  for (var i = 0; i < od.length; i++){ var h = (spread[i] || 0) / 2; hi[i] = od[i] + h; lo[i] = od[i] - h; }
+  // Order matters: band edges first (indices 1,2 for the fill), then the recessive traces,
+  // and OD LAST so the blue line sits on top of the (usually-overlapping) dark-corrected one.
+  drawUplot(1, th, 'Optical Density', hours, [
+    { label: 'spread +', data: hi, hidden: true },
+    { label: 'spread −', data: lo, hidden: true },
+    { label: 'Target', data: data.OD.targetrecord, role: 'muted', dash: true, width: 1.5 },
+    { label: 'OD (dark-corrected)', data: (data.OD.correctedRecord || od), role: 's1', width: 1.5 },
+    { label: 'OD', data: od, role: 's0', width: 2 }
+  ], { series: [1, 2], fill: th.band });
+
+  // Temperature: culture / internal air / external air, plus the thermostat target.
+  drawUplot(2, th, 'Temperature (°C)', hours, [
+    { label: 'Culture', data: data.ThermometerIR.record, role: 's0', width: 2 },
+    { label: 'Internal Air', data: data.ThermometerInternal.record, role: 's1', width: 1.5 },
+    { label: 'External Air', data: data.ThermometerExternal.record, role: 's2', width: 1.5 },
+    { label: 'Target', data: data.Thermostat.record, role: 'muted', dash: true, width: 1.5 }
+  ]);
+
+  drawUplot(3, th, 'Pump Rate', hours, [
+    { label: 'Pump 1 (Input)', data: data.Pump1.record, role: 's0', width: 2 }
+  ]);
+
+  drawFPChart(4, th, hours, data.FP1, 'FPEmit1B');
+  drawFPChart(5, th, hours, data.FP2, 'FPEmit2B');
+  drawFPChart(6, th, hours, data.FP3, 'FPEmit3B');
+
+  if (data.Zigzag.ON == 1){
+    drawUplot(7, th, 'Growth Rate', hours, [
+      { label: 'Growth Rate', data: data.GrowthRate.record, role: 's0', width: 2 }
+    ]);
+  }
+}
+
+// Re-theme all charts when the light/dark toggle flips (data unchanged, so the poll guard
+// would otherwise skip the redraw).
+if (window.MutationObserver){
+  new MutationObserver(function(){
+    for (var k in uplots){ if (uplots[k]) uplots[k].destroy(); }
+    uplots = {}; uplotKey = {};
+    if (window._lastSysData) redrawCharts(window._lastSysData);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}

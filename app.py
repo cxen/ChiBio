@@ -199,6 +199,7 @@ def initialise(M):
     sysData[M]['AS7341']['current']['gain']=0  #Gain actually used on the last read (auto-ranging updates it).
     sysData[M]['OD']['valid']=1
     sysData[M]['OD']['spread']=0.0  #max-min of the replicate OD reads (measurement noise).
+    sysData[M]['OD']['corrected']=0.0  #dark-corrected OD (display-only; never feeds control).
     for FP in ['FP1','FP2','FP3']:
         sysData[M][FP]['valid']=1
         sysData[M][FP]['GainUsed']=int(sysData[M][FP]['Gain'][1:])  #gain the last FP read landed on
@@ -211,6 +212,8 @@ def initialise(M):
     sysData[M]['time']['record']=[]
     sysData[M]['OD']['record']=[]
     sysData[M]['OD']['targetrecord']=[]
+    sysData[M]['OD']['spreadRecord']=[]      #replicate spread per cycle (chart error band)
+    sysData[M]['OD']['correctedRecord']=[]   #dark-corrected OD per cycle (chart trace)
     sysData[M]['Pump1']['record']=[]
     sysData[M]['Pump2']['record']=[]
     sysData[M]['Pump3']['record']=[]

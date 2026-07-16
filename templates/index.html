@@ -11,13 +11,14 @@
  
  <script type="text/javascript" src="{{ url_for('static', filename='HTMLScripts.js') }}"></script>
  
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+<script src="{{ url_for('static', filename='jquery-3.2.1.min.js') }}"></script>
 <!-- <meta http-equiv="expires" content="Mon, 26 Jul 1997 05:00:00 GMT"/> <meta http-equiv="pragma" content="no-cache" /> -->
 
 <!-- Bootstrap Imports  --> 
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+  <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-4.0.0.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='uPlot.min.css') }}">
 
-  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <script type="text/javascript" src="{{ url_for('static', filename='uPlot.iife.min.js') }}"></script>
   
  <meta http-equiv='cache-control' content='no-cache'>
 <meta http-equiv='expires' content='0'>
@@ -25,9 +26,15 @@
 
 <style>
   /* ponytail: dark mode via a scoped override block — Bootstrap 4 has no native
-     dark theme, so this is the minimum that works. Google Charts plots keep their
-     own light canvas (they ignore CSS); everything else follows data-theme.
-     Upgrade path: pass backgroundColor/colors in HTMLScripts.js to darken plots. */
+     dark theme, so this is the minimum that works. uPlot charts read the theme in
+     HTMLScripts.js (chartTheme) and re-render on toggle; their HTML legend is themed
+     below. Everything else follows data-theme. */
+  /* The OD spread band is drawn between two hidden edge series (indices 1 & 2); they
+     carry no meaning on their own, so hide their legend entries. */
+  #chart_div1 .u-legend .u-series:nth-child(2),
+  #chart_div1 .u-legend .u-series:nth-child(3) { display: none; }
+  html[data-theme="dark"] .u-legend { color:#e2e2e2; }
+  html[data-theme="dark"] .u-legend .u-marker { border-color: currentColor; }
   html[data-theme="dark"] body { background:#1c1c1e; color:#e2e2e2; }
   html[data-theme="dark"] .container { background:#2a2a2c; }
   html[data-theme="dark"] h1,html[data-theme="dark"] h2,html[data-theme="dark"] h3,
@@ -63,7 +70,7 @@
 <script>document.getElementById('themeToggle').textContent =
   document.documentElement.getAttribute('data-theme') === 'dark' ? '☀ Light' : '🌙 Dark';</script>
 
-<script>google.charts.load('current', {packages: ['corechart', 'line']});</script>
+<!-- charts now render with self-hosted uPlot (see HTMLScripts.js); no Google Charts loader -->
 
 
 
@@ -78,7 +85,7 @@
       
     </div>
     <div class="col-md-auto">
-      <a href="https://chi.bio" target="_blank"><img  src="http://chi.bio/CBL.png" height="60px" style="padding-top: 5px;" onerror="TitleFailure()"></a>
+      <a href="https://chi.bio" target="_blank"><img  src="{{ url_for('static', filename='CBL.png') }}" height="60px" style="padding-top: 5px;" onerror="TitleFailure()"></a>
     </div>
     <div class="col">
       <iframe src="https://chi.bio/news.html" seamless height="60px" width="100%" frameborder="0" marginheight="0" style="padding-top:15px;"></iframe>
@@ -2741,25 +2748,12 @@ function TitleFailure() {
     
 <!-- Bootstrap Imports  --> 
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='popper-1.12.9.min.js') }}"></script>
+<script src="{{ url_for('static', filename='bootstrap-4.0.0.min.js') }}"></script>
 
 
 
-<!-- Graphing Business -->
-
-
-
-<script>
-
-
-
-
-
-
-
-google.charts.load('visualization', '1', {packages:['controls'],});
-</script>
+<!-- Graphing Business: charts are created and updated by uPlot in HTMLScripts.js -->
 
 
 </body>

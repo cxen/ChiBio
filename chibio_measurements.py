@@ -16,6 +16,24 @@ def _record_od_dark(M, out):
     sysData[M]['OD0']['rawCorrected']=float(out[0])-float(out[1])
 
 
+def _od_from_transmission(M, device, transmission):
+    #Calibrated OD from a transmission reading, using the same formula each OD device uses in
+    #measure_od. Factored only so the dark-corrected transmission can be turned into a
+    #display-only corrected OD trace; the raw OD that feeds control is still computed inline
+    #below. DARK is tiny for LASER (~1 count) so corrected usually overlaps raw.
+    if device=='LASER650':
+        a=sysData[M]['OD0']['LASERa']
+        b=sysData[M]['OD0']['LASERb']
+        if abs(transmission) > 0.001:
+            r=math.log10(sysData[M]['OD0']['target']/transmission)
+            return r*b + r*r*a
+        return 0
+    try:
+        return transmission/sysData[M]['OD0']['target']  # LEDF / LEDA: ratio to the blank
+    except Exception:
+        return 0
+
+
 def measure_od(M):
     #Measures laser transmission and calculates calibrated OD from this.
     M=str(M)
@@ -81,6 +99,10 @@ def measure_od(M):
             sysData[M]['OD']['current']=0
             print(' OD Measurement exception on ' + str(device))
             logger.exception('OD measurement failed on %s', device)
+
+    #Display-only dark-corrected OD (from raw - dark transmission). Never feeds control; the
+    #raw OD['current'] above is unchanged. Charted as a second OD trace.
+    sysData[M]['OD']['corrected']=_od_from_transmission(M, device, sysData[M]['OD0'].get('rawCorrected', sysData[M]['OD0']['raw']))
 
     #Propagate the spectrometer read validity to the OD measurement. sysData keeps a
     #numeric (last-known) OD so the UI JSON and RegulateOD never see NaN; csvData records

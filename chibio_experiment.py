@@ -335,13 +335,16 @@ def runExperiment(M, placeholder):
             #plus the spread, instead of a plain mean, so measurement noise is recorded rather
             #than averaged away. The median feeds RegulateOD and the CSV. Invalid if any read failed.
             ODreadings=[]
+            ODcorr=[]
             od_valid=1
             for i in [0, 1, 2]:
                 measure_od(M)
                 ODreadings.append(sysData[M]['OD']['current'])
+                ODcorr.append(sysData[M]['OD'].get('corrected', sysData[M]['OD']['current']))
                 od_valid=od_valid and sysData[M]['OD'].get('valid',1)
                 time.sleep(0.25)
             sysData[M]['OD']['current'], sysData[M]['OD']['spread']=_median_and_spread(ODreadings)
+            sysData[M]['OD']['corrected'], _=_median_and_spread(ODcorr)
             sysData[M]['OD']['valid']=od_valid
 
             measure_temp(M,'Internal') #Measuring all temperatures
@@ -410,6 +413,8 @@ def runExperiment(M, placeholder):
             sysData[M]['time']['record'].append(elapsedTimeSeconds)
             sysData[M]['OD']['record'].append(sysData[M]['OD']['current'])
             sysData[M]['OD']['targetrecord'].append( sysData[M]['OD']['target']*sysData[M]['OD']['ON'])
+            sysData[M]['OD']['spreadRecord'].append(sysData[M]['OD']['spread'])          #for the chart error band
+            sysData[M]['OD']['correctedRecord'].append(sysData[M]['OD']['corrected'])    #dark-corrected OD trace
             sysData[M]['Thermostat']['record'].append(sysData[M]['Thermostat']['target']*float(sysData[M]['Thermostat']['ON']))
             sysData[M]['Light']['record'].append(float(sysData[M]['Light']['ON']))
             sysData[M]['ThermometerInternal']['record'].append(sysData[M]['ThermometerInternal']['current'])

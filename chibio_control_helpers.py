@@ -415,6 +415,8 @@ def downsample(M):
     sysData[M]['time']['record']=downsampleFunc(sysData[M]['time']['record'],index)
     sysData[M]['OD']['record']=downsampleFunc(sysData[M]['OD']['record'],index)
     sysData[M]['OD']['targetrecord']=downsampleFunc(sysData[M]['OD']['targetrecord'],index)
+    sysData[M]['OD']['spreadRecord']=downsampleFunc(sysData[M]['OD']['spreadRecord'],index)
+    sysData[M]['OD']['correctedRecord']=downsampleFunc(sysData[M]['OD']['correctedRecord'],index)
     sysData[M]['Thermostat']['record']=downsampleFunc(sysData[M]['Thermostat']['record'],index)
     sysData[M]['Light']['record']=downsampleFunc(sysData[M]['Light']['record'],index)
     sysData[M]['ThermometerInternal']['record']=downsampleFunc(sysData[M]['ThermometerInternal']['record'],index)
