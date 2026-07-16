@@ -42,7 +42,7 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 
 ## P4 — Optional / larger (robustness direction)
 
-- [ ] **Hardware-free import path for testing.** Importing `app.py` runs `initialiseAll()` and touches GPIO/I2C, so nothing can be tested off-device. A guard (env var / mock bus) to allow `import app` on a laptop would unlock smoke tests.
+- [x] **Hardware-free import path for testing.** `CHIBIO_MOCK_HW=1` swaps in a no-op GPIO (`chibio_hardware.py`) and skips `setup_watchdog()` + `initialiseAll()` (`app.py`), so `import app` works on a laptop. Gated on the env var, not on ImportError, so the device still fails loudly if real GPIO is missing (never silently mock the watchdog). `test_import_smoke.py` is the runnable check. Verified: import succeeds off-device (20 routes, no watchdog/I2C) and refuses without the flag; device path unaffected (self-test 8/8 on M0/M1).
 - [x] **Pin dependencies.** Added `requirements.txt` pinned to the device's known-good versions (verified 2026-07-14; last releases compatible with the image's Python 3.7). `setup.sh` now does `pip3 install -r requirements.txt` instead of unpinned installs. Also fixed a latent bug: `setup.sh` copied `app.py` but not the `chibio_*.py` modules, so a fresh provision of the refactor would fail to import — now copies the modules and `requirements.txt` too. Adafruit_BBIO stays a from-source tarball build (kernel-matched), not pinned via pip.
 - [ ] **Retire `original_app.py`** once confident in the refactor — it's reference-only and not imported. Keep until then.
 

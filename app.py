@@ -30,7 +30,14 @@ logging.basicConfig(
 logger = logging.getLogger('chibio')
 
 init_auth(application, logger)
-setup_watchdog()
+
+# CHIBIO_MOCK_HW lets `import app` succeed on a dev laptop (no GPIO/I2C) for smoke
+# tests, by skipping the two hardware entry points: the watchdog and initialiseAll.
+# See the mock GPIO in chibio_hardware.py. Unset (the device default) = real hardware.
+MOCK_HW = bool(os.environ.get('CHIBIO_MOCK_HW'))
+
+if not MOCK_HW:
+    setup_watchdog()
 
 
 @application.after_request
@@ -886,9 +893,11 @@ def ExperimentStartStop(M,value):
 
 
 if __name__ == '__main__':
-    initialiseAll()
+    if not MOCK_HW:
+        initialiseAll()
     application.run(debug=True,threaded=True,host='0.0.0.0',port=5000)
 else:
-    initialiseAll()
+    if not MOCK_HW:
+        initialiseAll()
 
 print(str(datetime.now()) + ' Start Up Complete')
