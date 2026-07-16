@@ -196,9 +196,11 @@ def initialise(M):
     # Read-validity flags (see sensor-failure-semantics): default valid; a failed
     # spectrometer read flips these to 0, which makes csvData record NaN for that cycle.
     sysData[M]['AS7341']['current']['valid']=1
+    sysData[M]['AS7341']['current']['gain']=0  #Gain actually used on the last read (auto-ranging updates it).
     sysData[M]['OD']['valid']=1
     for FP in ['FP1','FP2','FP3']:
         sysData[M][FP]['valid']=1
+        sysData[M][FP]['GainUsed']=int(sysData[M][FP]['Gain'][1:])  #gain the last FP read landed on
 
     sysData[M]['ThermometerInternal']['current']=0.0
     sysData[M]['ThermometerExternal']['current']=0.0

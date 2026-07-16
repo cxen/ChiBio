@@ -7,6 +7,14 @@ from chibio_state import sysData, sysItems
 
 logger = logging.getLogger('chibio')
 
+# Auto-ranging bounds. Gain is an AS7341 index 0..10 (0.5x .. 512x). Drop it when any
+# requested channel hits the 16-bit ADC ceiling (saturation); raise it when the brightest
+# requested channel is very weak. ponytail: simple thresholds + a small retry cap; tune
+# _AUTORANGE_WEAK if a sample class sits awkwardly between two gain steps.
+_ADC_SATURATED = 65535
+_AUTORANGE_WEAK = 1000
+_AUTORANGE_MAX_TRIES = 4
+
 
 def as7341_read(M, Gain, ISteps, reset):
     #Responsible for reading data from the spectrometer.
@@ -106,6 +114,9 @@ def get_spectrum(M, Gain):
     M=str(M)
     if (M=="0"):
         M=sysItems['UIDevice']
+    #No auto-ranging here: get_spectrum feeds CharacteriseDevice, which sweeps LED power and
+    #compares raw band counts ACROSS reads -- a per-read gain change would make them
+    #non-comparable (and the sweep records no per-cell gain). Fixed gain keeps it comparable.
     out=get_light(M,['nm410','nm440','nm470','nm510','nm550','nm583'],Gain,255)
     out2=get_light(M,['nm620', 'nm670','CLEAR','NIR','DARK'],Gain,255)
     sysData[M]['AS7341']['spectrum']['nm410']=out[0]
@@ -120,8 +131,10 @@ def get_spectrum(M, Gain):
     sysData[M]['AS7341']['spectrum']['NIR']=out2[3]
 
 
-def get_light(M, wavelengths, Gain, ISteps):
+def get_light(M, wavelengths, Gain, ISteps, autorange=False):
     #Runs spectrometer measurement and puts data into appropriate structure.
+    #autorange (opt-in): adjust Gain and re-read on saturation/weak-signal, then record the
+    #gain actually used. NEVER enable for OD -- its gain is locked to the OD calibration.
     M=str(M)
     channels=['nm410','nm440','nm470','nm510','nm550','nm583','nm620', 'nm670','CLEAR','NIR','DARK','ExtGPIO', 'ExtINT' , 'FLICKER']
     for channel in channels:
@@ -132,6 +145,7 @@ def get_light(M, wavelengths, Gain, ISteps):
             sysData[M]['AS7341']['channels'][wavelength]=index #Now assign ADCs to each of the channel where needed.
         index=index+1
 
+    DACS=['ADC0', 'ADC1', 'ADC2', 'ADC3', 'ADC4', 'ADC5']
     success=0
     while success<2:
         try:
@@ -151,9 +165,30 @@ def get_light(M, wavelengths, Gain, ISteps):
                 print(str(datetime.now()) + 'AS7341 measurement failed twice on ' + str(M) + ', marking invalid (keeping last-known values)')
                 sysData[M]['AS7341']['current']['valid']=0
 
+    # Auto-range: step the gain toward a usable signal and re-read. Bounded retries so a
+    # persistently saturated/dark sample can't loop. Only looks at the requested channels
+    # (max() ignores the ~0 DARK channel, so it never forces the gain up).
+    if autorange and sysData[M]['AS7341']['current']['valid']==1:
+        nchan=sum(1 for w in wavelengths if w!="OFF")
+        tries=0
+        while tries<_AUTORANGE_MAX_TRIES:
+            adcs=[sysData[M]['AS7341']['current'][DACS[i]] for i in range(nchan)]
+            if any(a>=_ADC_SATURATED for a in adcs) and Gain>0:
+                Gain=Gain-1
+            elif adcs and max(adcs)<_AUTORANGE_WEAK and Gain<10:
+                Gain=Gain+1
+            else:
+                break
+            try:
+                as7341_read(M,Gain,ISteps,0)
+            except Exception:
+                sysData[M]['AS7341']['current']['valid']=0
+                break
+            tries=tries+1
+    sysData[M]['AS7341']['current']['gain']=Gain #Record the gain actually used (transparency).
+
     output=[0.0,0.0,0.0,0.0,0.0,0.0]
     index=0
-    DACS=['ADC0', 'ADC1', 'ADC2', 'ADC3', 'ADC4', 'ADC5']
     for wavelength in wavelengths:
         if wavelength != "OFF":
             output[index]=sysData[M]['AS7341']['current'][DACS[index]]
@@ -162,12 +197,12 @@ def get_light(M, wavelengths, Gain, ISteps):
     return output
 
 
-def get_transmission(M, item, wavelengths, Gain, ISteps):
+def get_transmission(M, item, wavelengths, Gain, ISteps, autorange=False):
     #Gets light transmission through sample by turning on light, measuring, turning off light.
     from app import set_output_on_sync
 
     M=str(M)
     set_output_on_sync(M,item,1)
-    output=get_light(M,wavelengths,Gain,ISteps)
+    output=get_light(M,wavelengths,Gain,ISteps,autorange)
     set_output_on_sync(M,item,0)
     return output

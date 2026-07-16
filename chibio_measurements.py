@@ -96,7 +96,10 @@ def measure_fp(M):
     for FP in ['FP1','FP2','FP3']:
         if sysData[M][FP]['ON']==1:
             Gain=int(sysData[M][FP]['Gain'][1:])
-            out=get_transmission(M,sysData[M][FP]['LED'],[sysData[M][FP]['BaseBand'],sysData[M][FP]['Emit1Band'],sysData[M][FP]['Emit2Band']],Gain,255)
+            #FP is safe to auto-range: base and emit are read in one shot at one gain, so the
+            #emit/base ratio is gain-invariant. OD is not (its gain is calibration-locked).
+            out=get_transmission(M,sysData[M][FP]['LED'],[sysData[M][FP]['BaseBand'],sysData[M][FP]['Emit1Band'],sysData[M][FP]['Emit2Band']],Gain,255,autorange=True)
+            sysData[M][FP]['GainUsed']=sysData[M]['AS7341']['current'].get('gain',Gain)
             sysData[M][FP]['Base']=float(out[0])
             if (sysData[M][FP]['Base']>0):
                 sysData[M][FP]['Emit1']=float(out[1])/sysData[M][FP]['Base']

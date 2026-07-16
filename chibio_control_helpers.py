@@ -238,9 +238,9 @@ _CSV_COLUMN_UNITS = {
     'LED_523nm_setpoint': 'frac', 'LED_595nm_setpoint': 'frac', 'LED_623nm_setpoint': 'frac',
     'LED_6500K_setpoint': 'frac', 'LED_600nm_setpoint': 'frac', 'LED_550nm_setpoint': 'frac',
     'LED_White_setpoint': 'frac', 'laser_setpoint': 'frac', 'LED_UV_int': 'frac',
-    'FP1_base': 'counts', 'FP1_emit1': 'ratio', 'FP1_emit2': 'ratio',
-    'FP2_base': 'counts', 'FP2_emit1': 'ratio', 'FP2_emit2': 'ratio',
-    'FP3_base': 'counts', 'FP3_emit1': 'ratio', 'FP3_emit2': 'ratio',
+    'FP1_base': 'counts', 'FP1_emit1': 'ratio', 'FP1_emit2': 'ratio', 'FP1_gain_used': 'gain_index',
+    'FP2_base': 'counts', 'FP2_emit1': 'ratio', 'FP2_emit2': 'ratio', 'FP2_gain_used': 'gain_index',
+    'FP3_base': 'counts', 'FP3_emit1': 'ratio', 'FP3_emit2': 'ratio', 'FP3_gain_used': 'gain_index',
     'custom_prog_param1': 'program-defined', 'custom_prog_param2': 'program-defined',
     'custom_prog_param3': 'program-defined', 'custom_prog_status': 'program-defined',
     'zigzag_target': 'OD', 'growth_rate': 'per_hour',
@@ -295,6 +295,7 @@ def csvData(M):
         data[FP+'_base']  = float('nan') if invalid else (sysData[M][FP]['Base']  if on else 0.0)
         data[FP+'_emit1'] = float('nan') if invalid else (sysData[M][FP]['Emit1'] if on else 0.0)
         data[FP+'_emit2'] = float('nan') if invalid else (sysData[M][FP]['Emit2'] if on else 0.0)
+        data[FP+'_gain_used'] = sysData[M][FP].get('GainUsed',0) if on else 0  #auto-ranged gain index; known even on a failed read
     data['custom_prog_param1'] = sysData[M]['Custom']['param1']*float(sysData[M]['Custom']['ON'])
     data['custom_prog_param2'] = sysData[M]['Custom']['param2']*float(sysData[M]['Custom']['ON'])
     data['custom_prog_param3'] = sysData[M]['Custom']['param3']*float(sysData[M]['Custom']['ON'])
