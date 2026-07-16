@@ -30,7 +30,7 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 
 ## P3 — Cleanup / docs
 
-- [ ] **Write a README** (none exists) with installation + usage that reflect this fork's changes. Should cover:
+- [x] **Write a README** (was an upstream stub) with installation + usage that reflect this fork's changes. Done — covers context/layout, install (golden-image + `setup.sh`), run, auth, dev/test (rsync deploy + `device_selftest.py`). Covers:
   - **Context:** fork of HarrisonSteel/ChiBio; runs *on* the BeagleBone (Debian 10.5 / Py 3.7), not a dev machine; module layout (`app.py` + `chibio_*.py`, with `original_app.py` as reference).
   - **Install:** `setup.sh` (archive.debian.org repoint, `requirements.txt` pinned deps, Adafruit_BBIO from bundled tarball); the golden-image capture/restore flow (`make-golden-image.md`) as the preferred provisioning path.
   - **Run:** `cb.sh` binds `0.0.0.0:5000` (USB + LAN); set `CHIBIO_TOKEN` (via `.chibio_token`) for auth.
