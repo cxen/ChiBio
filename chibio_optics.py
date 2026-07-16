@@ -136,17 +136,20 @@ def get_light(M, wavelengths, Gain, ISteps):
     while success<2:
         try:
             as7341_read(M,Gain,ISteps,success)
+            sysData[M]['AS7341']['current']['valid']=1
             success=2
         except Exception:
             print(str(datetime.now()) + 'AS7341 measurement failed on ' + str(M))
             logger.exception('AS7341 measurement failed on %s', M)
             success=success+1
             if success==2:
-                print(str(datetime.now()) + 'AS7341 measurement failed twice on ' + str(M) + ', setting unity values')
-                sysData[M]['AS7341']['current']['ADC0']=1
-                DACS=['ADC1', 'ADC2', 'ADC3', 'ADC4', 'ADC5']
-                for DAC in DACS:
-                    sysData[M]['AS7341']['current'][DAC]=0
+                # Don't fabricate a plausible reading (old code set ADC0=1, rest=0, which
+                # looked like a real point in the data). Mark the read invalid and keep the
+                # last-known ADC values so sysData stays numeric (the UI JSON and RegulateOD
+                # never see NaN). csvData records NaN for this cycle so the failure is
+                # distinguishable in analysis. See sensor-failure-semantics decision.
+                print(str(datetime.now()) + 'AS7341 measurement failed twice on ' + str(M) + ', marking invalid (keeping last-known values)')
+                sysData[M]['AS7341']['current']['valid']=0
 
     output=[0.0,0.0,0.0,0.0,0.0,0.0]
     index=0

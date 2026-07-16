@@ -71,6 +71,11 @@ def measure_od(M):
             print(' OD Measurement exception on ' + str(device))
             logger.exception('OD measurement failed on %s', device)
 
+    #Propagate the spectrometer read validity to the OD measurement. sysData keeps a
+    #numeric (last-known) OD so the UI JSON and RegulateOD never see NaN; csvData records
+    #NaN for this cycle when invalid. See the sensor-failure-semantics decision.
+    sysData[M]['OD']['valid']=sysData[M]['AS7341']['current'].get('valid',1)
+
 
 def measure_fp(M):
     #Responsible for measuring each of the active Fluorescent proteins.
@@ -88,6 +93,7 @@ def measure_fp(M):
             else:#This might happen if you try to measure in CLEAR whilst also having CLEAR as baseband!
                 sysData[M][FP]['Emit1']=float(out[1])
                 sysData[M][FP]['Emit2']=float(out[2])
+            sysData[M][FP]['valid']=sysData[M]['AS7341']['current'].get('valid',1) #see sensor-failure-semantics
 
 
 def measure_temp(M, which):

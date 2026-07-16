@@ -261,7 +261,9 @@ def csvData(M):
 
     data = {
         'exp_time': sysData[M]['time']['record'][-1],
-        'od_measured': sysData[M]['OD']['record'][-1],
+        # NaN marks a failed spectrometer read so it's distinguishable in analysis; sysData
+        # itself stays numeric (see sensor-failure-semantics). Only the CSV cell goes NaN.
+        'od_measured': float('nan') if sysData[M]['OD'].get('valid',1)==0 else sysData[M]['OD']['record'][-1],
         'od_setpoint': sysData[M]['OD']['targetrecord'][-1],
         'od_zero_setpoint': sysData[M]['OD0']['target'],
         'thermostat_setpoint': sysData[M]['Thermostat']['record'][-1],
@@ -282,9 +284,10 @@ def csvData(M):
     data['LED_UV_int'] = sysData[M]['UV']['target']*sysData[M]['UV']['ON']
     for FP in ['FP1','FP2','FP3']:
         on = sysData[M][FP]['ON']==1
-        data[FP+'_base']  = sysData[M][FP]['Base']  if on else 0.0
-        data[FP+'_emit1'] = sysData[M][FP]['Emit1'] if on else 0.0
-        data[FP+'_emit2'] = sysData[M][FP]['Emit2'] if on else 0.0
+        invalid = on and sysData[M][FP].get('valid',1)==0  # failed read on an active FP -> NaN
+        data[FP+'_base']  = float('nan') if invalid else (sysData[M][FP]['Base']  if on else 0.0)
+        data[FP+'_emit1'] = float('nan') if invalid else (sysData[M][FP]['Emit1'] if on else 0.0)
+        data[FP+'_emit2'] = float('nan') if invalid else (sysData[M][FP]['Emit2'] if on else 0.0)
     data['custom_prog_param1'] = sysData[M]['Custom']['param1']*float(sysData[M]['Custom']['ON'])
     data['custom_prog_param2'] = sysData[M]['Custom']['param2']*float(sysData[M]['Custom']['ON'])
     data['custom_prog_param3'] = sysData[M]['Custom']['param3']*float(sysData[M]['Custom']['ON'])

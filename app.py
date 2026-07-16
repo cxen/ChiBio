@@ -191,6 +191,13 @@ def initialise(M):
     for DAC in DACS:
         sysData[M]['AS7341']['current'][DAC]=0
 
+    # Read-validity flags (see sensor-failure-semantics): default valid; a failed
+    # spectrometer read flips these to 0, which makes csvData record NaN for that cycle.
+    sysData[M]['AS7341']['current']['valid']=1
+    sysData[M]['OD']['valid']=1
+    for FP in ['FP1','FP2','FP3']:
+        sysData[M][FP]['valid']=1
+
     sysData[M]['ThermometerInternal']['current']=0.0
     sysData[M]['ThermometerExternal']['current']=0.0
     sysData[M]['ThermometerIR']['current']=0.0
