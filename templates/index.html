@@ -87,6 +87,20 @@
   .u-legend .u-off > * { opacity: 1; color: var(--text-muted); text-decoration: line-through; }
   .u-legend .u-off .u-marker { opacity: 0.4; }
 
+  /* The live legend is a <table> whose value cell swaps between "--" and a reading as the
+     cursor moves. Left alone the value column resizes to fit, and since uPlot.min.css sets
+     .u-legend{margin:auto} inside a .uplot{width:min-content}, that re-centres the labels
+     and can widen the whole plot -- the legend visibly walks around and shoves its
+     neighbours. Reserve the column and use tabular figures so a changing value is always
+     exactly as wide as the space already held for it. Pairs with the fixed-precision value
+     formatters in drawUplot(); without those uPlot prints raw floats
+     ("0.4231000000000001"), which no reserved width can contain. */
+  .u-legend .u-value {
+    font-variant-numeric: tabular-nums;
+    min-width: 8ch;
+    text-align: right;
+  }
+
   body { background: var(--bg); color: var(--text); }
   /* .container is layout only -- .panel carries the surface. Painting containers
      turned the 8 deliberately-unframed ones into tinted blocks with hard edges. */
@@ -1224,25 +1238,26 @@
     </div>
   </div>
 
-  <hr> 
-   
-   <div class="row">
-    <div class="col-4">
-
-
+  <hr>
 
 <div hidden id="FPRefresh"></div>
 
-<!-- Fluorescence configuration assist: scan the sample, recommend + apply FP settings -->
+<!-- Fluorescence configuration assist: scan the sample, recommend + apply FP settings.
+     Sits ABOVE the FP row, not inside its first column: it applies to all three FP slots
+     (its Apply buttons target FP1/2/3), and nesting it in col-4 pushed FP 1 down by the
+     height of this panel while FP 2/3 stayed at the top of the row. -->
 <div id="fluorAssist" class="panel">
   <h4 style="margin:0 0 4px">Fluorescence assist</h4>
   <div style="font-size:13px; color:var(--text-muted); margin-bottom:8px">Scan the sample across the excitation LEDs to find the strongest excitation and emission bands, then apply the result to an FP slot below.</div>
   <button id="FluorScanQuick" class="btn btn-sm btn-primary">Quick scan</button>
   <button id="FluorScanFull" class="btn btn-sm btn-outline-secondary">Full sweep</button>
-  <span id="FluorStatus" style="margin-left:10px; font-size:13px; color:#999"></span>
+  <span id="FluorStatus" style="margin-left:10px; font-size:13px; color:var(--text-muted)"></span>
   <div id="FluorRec" style="margin-top:10px; font-size:14px"></div>
   <div id="FluorHeatmap" style="margin-top:10px; overflow-x:auto"></div>
 </div>
+
+   <div class="row">
+    <div class="col-4">
 
 <div align='center'><h3>FP 1</h3><button id="FP1Switch" >Active</button> </div>
         <br>

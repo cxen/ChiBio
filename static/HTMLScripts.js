@@ -700,11 +700,20 @@ function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
   }
   if (uplots[plotID]) uplots[plotID].destroy();
 
-  var uSeries = [{}];
+  // uPlot's default legend value is the raw number ("0.4231000000000001") and its default
+  // label for series[0] is the literal string "Value" -- which is what the x row rendered as.
+  // Name the x axis for what it is and give every series a fixed-precision formatter, so the
+  // cell width is bounded (the CSS reserves 8ch for it and stops the hover reflow).
+  function fixed(dp){
+    return function(u, v){ return v == null ? '--' : v.toFixed(dp); };
+  }
+
+  var uSeries = [{ label: 'Time (h)', value: fixed(2) }];
   for (var j = 0; j < seriesDefs.length; j++){
     var s = seriesDefs[j];
     uSeries.push({
       label:  s.label,
+      value:  fixed(3),
       stroke: s.hidden ? 'rgba(0,0,0,0)' : roleColor(th, s.role),
       width:  s.hidden ? 0 : (s.width || 2),
       dash:   s.dash ? [6, 4] : undefined,
