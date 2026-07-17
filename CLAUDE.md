@@ -6,13 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Chi.Bio operating system: a Flask web app that controls Chi.Bio bioreactors over an I2C bus. It runs **on the device** (a BeagleBone Black), not on a dev machine — see https://chi.bio/software/. There is no linter and no build step. The product code runs only on the device, but a set of `test_*.py` files run **off-device** under `CHIBIO_MOCK_HW=1` (see [Testing off-device](#testing-off-device)).
 
+**Develop against the hardware, not against the mock.** This is a control system for a physical bioreactor, and the device is the reference you design against — not a confirmation step at the end. `CHIBIO_MOCK_HW=1` exists so `import app` works off-device; it is an import shim, not a development target. Anything UI- or data-shaped depends on facts only the device has: **which LED version is fitted** (V1 vs V2 expose entirely different excitation panels), which reactors are actually present, and what real readings look like. Get those first — `ssh ChiBio`, run the server, `curl` its `/getSysdata/` — and drive any off-device preview from a **real captured snapshot** rather than invented fixtures. Designing against a mocked reality means designing for a machine that doesn't exist.
+
 ## Running / deploying
 
 - `cb.sh` — starts the server on the device: `gunicorn -b 192.168.7.2:5000 app:application`. Uncomment the `screen` line to run detached.
 - `setup.sh` — one-time device provisioning (root SSH, networking, pip deps, builds the bundled `Adafruit_BBIO-1.2.0.tar.gz`). Run once on a fresh BeagleBone.
 - Auth: set the `CHIBIO_TOKEN` env var to require an `X-Auth-Token` header (or `?token=`) on non-local POSTs. Local/private-IP requests are always allowed (see `chibio_auth.py`).
 
-**By default you cannot run this on macOS/Linux dev machines.** Importing `app.py` triggers `setup_watchdog()` and `initialiseAll()`, which talk to GPIO/I2C hardware (`Adafruit_BBIO` for GPIO/PWM, `smbus2` for I2C — `Adafruit_GPIO` was removed) and spawn the watchdog. Setting `CHIBIO_MOCK_HW=1` swaps in a no-op GPIO and skips both, so `import app` works off-device for the tests. Edit here; run the real thing on the device.
+**By default you cannot run this on macOS/Linux dev machines.** Importing `app.py` triggers `setup_watchdog()` and `initialiseAll()`, which talk to GPIO/I2C hardware (`Adafruit_BBIO` for GPIO/PWM, `smbus2` for I2C — `Adafruit_GPIO` was removed) and spawn the watchdog. Setting `CHIBIO_MOCK_HW=1` swaps in a no-op GPIO and skips both, so `import app` works off-device for the tests. That import shim is the *only* thing the mock is for — see the hardware-first note above before you design anything against it.
 
 ## Architecture
 
