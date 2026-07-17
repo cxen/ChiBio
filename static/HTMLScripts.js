@@ -169,91 +169,91 @@ function updateData(data){
         
         
          if (data.LEDA.ON==1.0){
-             document.getElementById("LEDASwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDASwitch", "on")
              
         } else {
-             document.getElementById("LEDASwitch").setAttribute("style", "")
+             setActive("LEDASwitch", "")
         }
         
         
         if (data.LEDB.ON==1){
-             document.getElementById("LEDBSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDBSwitch", "on")
              
         } else {
-             document.getElementById("LEDBSwitch").setAttribute("style", "")
+             setActive("LEDBSwitch", "")
         }
         
         if (data.LEDC.ON==1){
-             document.getElementById("LEDCSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDCSwitch", "on")
              
         } else {
-             document.getElementById("LEDCSwitch").setAttribute("style", "")
+             setActive("LEDCSwitch", "")
         }
         if (data.LEDD.ON==1){
-             document.getElementById("LEDDSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDDSwitch", "on")
              
         } else {
-             document.getElementById("LEDDSwitch").setAttribute("style", "")
+             setActive("LEDDSwitch", "")
         }
         if (data.LEDE.ON==1){
-             document.getElementById("LEDESwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDESwitch", "on")
              
         } else {
-             document.getElementById("LEDESwitch").setAttribute("style", "")
+             setActive("LEDESwitch", "")
         }
         if (data.LEDF.ON==1){
-             document.getElementById("LEDFSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDFSwitch", "on")
              
         } else {
-             document.getElementById("LEDFSwitch").setAttribute("style", "")
+             setActive("LEDFSwitch", "")
         }
         if (data.LEDG.ON==1){
-             document.getElementById("LEDGSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LEDGSwitch", "on")
              
         } else {
-             document.getElementById("LEDGSwitch").setAttribute("style", "")
+             setActive("LEDGSwitch", "")
         }
         
         if (data.LEDH.ON==1){
-          document.getElementById("LEDHSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+          setActive("LEDHSwitch", "on")
           
      } else {
-          document.getElementById("LEDHSwitch").setAttribute("style", "")
+          setActive("LEDHSwitch", "")
      }
 
      if (data.LEDI.ON==1){
-          document.getElementById("LEDISwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+          setActive("LEDISwitch", "on")
           
      } else {
-          document.getElementById("LEDISwitch").setAttribute("style", "")
+          setActive("LEDISwitch", "")
      }
 
      if (data.LEDV.ON==1){
-          document.getElementById("LEDVSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+          setActive("LEDVSwitch", "on")
           
      } else {
-          document.getElementById("LEDVSwitch").setAttribute("style", "")
+          setActive("LEDVSwitch", "")
      }
 
 
         
          if (data.UV.ON==1){
-             document.getElementById("UVSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("UVSwitch", "on")
              
         } else {
-             document.getElementById("UVSwitch").setAttribute("style", "")
+             setActive("UVSwitch", "")
         }
         
         
         if (data.FP1.ON==1){
-             document.getElementById("FP1Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("FP1Switch", "on")
              document.getElementById("FPExcite1").disabled = 1
              document.getElementById("FPBase1").disabled = 1
              document.getElementById("FPEmit1A").disabled = 1
              document.getElementById("FPEmit1B").disabled = 1
              document.getElementById("FPGain1").disabled = 1
         } else {
-             document.getElementById("FP1Switch").setAttribute("style", "")
+             setActive("FP1Switch", "")
              document.getElementById("FPExcite1").disabled = 0
              document.getElementById("FPBase1").disabled = 0
              document.getElementById("FPEmit1A").disabled = 0
@@ -262,14 +262,14 @@ function updateData(data){
         }
         
         if (data.FP2.ON==1){
-             document.getElementById("FP2Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("FP2Switch", "on")
              document.getElementById("FPExcite2").disabled = 1
              document.getElementById("FPBase2").disabled = 1
              document.getElementById("FPEmit2A").disabled = 1
              document.getElementById("FPEmit2B").disabled = 1
              document.getElementById("FPGain2").disabled = 1
         } else {
-             document.getElementById("FP2Switch").setAttribute("style", "")
+             setActive("FP2Switch", "")
              document.getElementById("FPExcite2").disabled = 0
              document.getElementById("FPBase2").disabled = 0
              document.getElementById("FPEmit2A").disabled = 0
@@ -278,14 +278,14 @@ function updateData(data){
         }
         
         if (data.FP3.ON==1){
-             document.getElementById("FP3Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("FP3Switch", "on")
              document.getElementById("FPExcite3").disabled = 1
              document.getElementById("FPBase3").disabled = 1
              document.getElementById("FPEmit3A").disabled = 1
              document.getElementById("FPEmit3B").disabled = 1
              document.getElementById("FPGain3").disabled = 1
         } else {
-             document.getElementById("FP3Switch").setAttribute("style", "")
+             setActive("FP3Switch", "")
              document.getElementById("FPExcite3").disabled = 0
              document.getElementById("FPBase3").disabled = 0
              document.getElementById("FPEmit3A").disabled = 0
@@ -297,66 +297,66 @@ function updateData(data){
       
         
          if (data.LASER650.ON==1){
-             document.getElementById("LASER650Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LASER650Switch", "on")
              
         } else {
-             document.getElementById("LASER650Switch").setAttribute("style", "")
+             setActive("LASER650Switch", "")
         }
         
          if (data.Thermostat.ON==1){
-             document.getElementById("ThermostatSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("ThermostatSwitch", "on")
              
         } else {
-             document.getElementById("ThermostatSwitch").setAttribute("style", "")
+             setActive("ThermostatSwitch", "")
         }
        
         if (data.Pump1.ON==1){
-             document.getElementById("Pump1Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("Pump1Switch", "on")
              
         } else {
-             document.getElementById("Pump1Switch").setAttribute("style", "")
+             setActive("Pump1Switch", "")
         }
         
         if (data.Pump2.ON==1){
-             document.getElementById("Pump2Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("Pump2Switch", "on")
              
         } else {
-             document.getElementById("Pump2Switch").setAttribute("style", "")
+             setActive("Pump2Switch", "")
         }
         
          if (data.Pump3.ON==1){
-             document.getElementById("Pump3Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("Pump3Switch", "on")
              
         } else {
-             document.getElementById("Pump3Switch").setAttribute("style", "")
+             setActive("Pump3Switch", "")
         }
         
          if (data.Pump4.ON==1){
-             document.getElementById("Pump4Switch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("Pump4Switch", "on")
              
         } else {
-             document.getElementById("Pump4Switch").setAttribute("style", "")
+             setActive("Pump4Switch", "")
         }
         
          if (data.Stir.ON==1){
-             document.getElementById("StirSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("StirSwitch", "on")
              
         } else {
-             document.getElementById("StirSwitch").setAttribute("style", "")
+             setActive("StirSwitch", "")
         }
         
          if (data.Light.ON==1){
-             document.getElementById("LightSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("LightSwitch", "on")
              
         } else {
-             document.getElementById("LightSwitch").setAttribute("style", "")
+             setActive("LightSwitch", "")
         }
         
          if (data.Custom.ON==1){
-             document.getElementById("CustomSwitch").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("CustomSwitch", "on")
              
         } else {
-             document.getElementById("CustomSwitch").setAttribute("style", "")
+             setActive("CustomSwitch", "")
         }
 
 
@@ -460,11 +460,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M0'){
             document.getElementById("Device0").disabled= Boolean(0)
-            document.getElementById("Device0").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device0", "go")
              
         } else {
             document.getElementById("Device0").disabled= Boolean(0)
-            document.getElementById("Device0").setAttribute("style", "")
+            setActive("Device0", "")
         }
         
         
@@ -474,11 +474,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M1'){
             document.getElementById("Device1").disabled= Boolean(0)
-            document.getElementById("Device1").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device1", "go")
              
         } else {
             document.getElementById("Device1").disabled= Boolean(0)
-            document.getElementById("Device1").setAttribute("style", "")
+            setActive("Device1", "")
         }
         
         
@@ -488,11 +488,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M2'){
             document.getElementById("Device2").disabled= Boolean(0)
-            document.getElementById("Device2").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device2", "go")
              
         } else {
             document.getElementById("Device2").disabled= Boolean(0)
-            document.getElementById("Device2").setAttribute("style", "")
+            setActive("Device2", "")
         }
         
         
@@ -502,11 +502,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M3'){
             document.getElementById("Device3").disabled= Boolean(0)
-            document.getElementById("Device3").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device3", "go")
              
         } else {
             document.getElementById("Device3").disabled= Boolean(0)
-            document.getElementById("Device3").setAttribute("style", "")
+            setActive("Device3", "")
         }
         
         
@@ -516,11 +516,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M4'){
             document.getElementById("Device4").disabled= Boolean(0)
-            document.getElementById("Device4").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device4", "go")
              
         } else {
             document.getElementById("Device4").disabled= Boolean(0)
-            document.getElementById("Device4").setAttribute("style", "")
+            setActive("Device4", "")
         }
         
         
@@ -530,11 +530,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M5'){
             document.getElementById("Device5").disabled= Boolean(0)
-            document.getElementById("Device5").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device5", "go")
              
         } else {
             document.getElementById("Device5").disabled= Boolean(0)
-            document.getElementById("Device5").setAttribute("style", "")
+            setActive("Device5", "")
         }
         
         
@@ -543,11 +543,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M6'){
             document.getElementById("Device6").disabled= Boolean(0)
-            document.getElementById("Device6").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device6", "go")
              
         } else {
             document.getElementById("Device6").disabled= Boolean(0)
-            document.getElementById("Device6").setAttribute("style", "")
+            setActive("Device6", "")
         }
         
         if (data.presentDevices.M7 ==0) {
@@ -555,11 +555,11 @@ function updateData(data){
         
         } else if (data.UIDevice=='M7'){
             document.getElementById("Device7").disabled= Boolean(0)
-            document.getElementById("Device7").setAttribute("style", "border-style:inset;background-color:LimeGreen")
+            setActive("Device7", "go")
              
         } else {
             document.getElementById("Device7").disabled= Boolean(0)
-            document.getElementById("Device7").setAttribute("style", "")
+            setActive("Device7", "")
         }
         
         
@@ -573,17 +573,17 @@ function updateData(data){
         document.getElementById("Pump2Switch").disabled = (TurbidostatOn);
         document.getElementById("Pump2Set").disabled = (TurbidostatOn);
          if (TurbidostatOn){
-             document.getElementById("ODRegulate").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("ODRegulate", "on")
         } else {
-             document.getElementById("ODRegulate").setAttribute("style", "")
+             setActive("ODRegulate", "")
         }
         document.getElementById("ODRegulate").disabled = !Boolean(data.Experiment.ON)
         
         
          if (data.Zigzag.ON==1){
-             document.getElementById("Zigzag").setAttribute("style", "border-style:inset;background-color:lightblue")
+             setActive("Zigzag", "on")
         } else {
-             document.getElementById("Zigzag").setAttribute("style", "")
+             setActive("Zigzag", "")
         }
         document.getElementById("Zigzag").disabled = !TurbidostatOn
              
@@ -643,15 +643,31 @@ window._lastSysData = data;
 var uplots = {};
 var uplotKey = {};
 
+// One place decides what an active control looks like, and CSS owns the colours so
+// both themes work. This replaces ~66 inline style writes that hardcoded lightblue /
+// LimeGreen: being inline, they beat every dark-mode rule and stranded these buttons
+// in light mode. state: '' (off) | 'on' | 'go'.
+function setActive(id, state){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('is-on', state === 'on');
+  el.classList.toggle('is-go', state === 'go');
+  el.setAttribute('aria-pressed', state ? 'true' : 'false');
+}
+
+// Colours come from the CSS token block in index.html -- the single source of truth
+// for both themes. Read them rather than keeping a second palette here: the two
+// used to drift apart, and only one of them was contrast-checked.
 function chartTheme(){
-  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var cs = getComputedStyle(document.documentElement);
+  function tok(name){ return cs.getPropertyValue(name).trim(); }
   return {
-    dark:   dark,
-    text:   dark ? '#e8e8e6' : '#0b0b0b',
-    muted:  dark ? '#9a998f' : '#6b6a66',
-    grid:   dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)',
-    series: dark ? ['#3987e5','#008300','#d55181'] : ['#2a78d6','#008300','#e87ba4'],
-    band:   dark ? 'rgba(57,135,229,0.20)' : 'rgba(42,120,214,0.13)'
+    dark:   document.documentElement.getAttribute('data-theme') === 'dark',
+    text:   tok('--text'),
+    muted:  tok('--text-muted'),
+    grid:   tok('--grid'),
+    series: [tok('--series-1'), tok('--series-2'), tok('--series-3')],
+    band:   tok('--band')
   };
 }
 
