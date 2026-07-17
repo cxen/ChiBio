@@ -30,7 +30,6 @@ The whole system is **global mutable state + threads + one serialized I2C pipe**
 - **`chibio_experiment.py`** — the long-running control threads: `runExperiment` (the per-cycle main loop), `Thermostat` (PI + MPC heater control), `PumpModulation` (duty-cycled pumps), `RegulateOD` (turbidostat), `Zigzag` (OD dithering + growth-rate estimation).
 - **`chibio_control_helpers.py`** — user-editable optogenetic `CustomProgram`s (C1–C6), CSV logging (`csvData`), and `downsample`.
 - **Frontend** — `templates/index.html` rendered with `sysData[UIDevice]`; `static/HTMLScripts.js` polls `/getSysdata/` over AJAX and redraws. UI → backend is one-way POSTs to the routes.
-- **`original_app.py`** — the pre-refactor V1.0 monolith (~2300 lines, no `chibio_` imports), kept for reference. Not imported anywhere. Don't edit it for live changes; change the modules.
 
 ### Conventions that bite if you miss them
 

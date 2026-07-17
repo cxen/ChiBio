@@ -5,8 +5,8 @@ over an I2C bus. It runs **on the device** (a BeagleBone Black), not on a dev
 machine — see https://chi.bio/software/.
 
 This is a fork of [HarrisonSteel/ChiBio](https://github.com/HarrisonSteel/ChiBio),
-refactored and hardened. The original single-file `app.py` (~2300 lines) is kept
-as `original_app.py` for reference and is no longer imported.
+refactored and hardened. The original single-file `app.py` (~2300 lines) was split
+into the modules below and retired; it remains in git history if ever needed.
 
 ## What's different in this fork
 
@@ -36,7 +36,6 @@ as `original_app.py` for reference and is no longer imported.
 - `chibio_experiment.py` — the long-running control threads (main loop, thermostat, pumps, turbidostat, zigzag).
 - `chibio_control_helpers.py` — user-editable optogenetic programs, CSV logging, downsampling.
 - `templates/` + `static/` — the browser UI (polls `/getSysdata/` over AJAX).
-- `original_app.py` — the pre-refactor V1.0 monolith, reference only.
 
 ## Install (on the BeagleBone)
 
