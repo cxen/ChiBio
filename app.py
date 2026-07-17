@@ -206,7 +206,7 @@ def initialise(M):
         sysData[M][FP]['spread']=0.0  #max-min of the replicate FP base reads.
 
     #Fluorescence-assist scan result (excitation-emission matrix + recommended FP settings).
-    sysData[M]['FluorescenceScan']={'matrix':{}, 'recommendation':None, 'mode':'', 'bands':[]}
+    sysData[M]['FluorescenceScan']={'matrix':{}, 'recommendation':None, 'mode':'', 'status':'', 'bands':[]}
 
     sysData[M]['ThermometerInternal']['current']=0.0
     sysData[M]['ThermometerExternal']['current']=0.0

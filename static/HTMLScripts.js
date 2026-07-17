@@ -611,6 +611,8 @@ function updateData(data){
             document.getElementById("FPGain3").value = data.FP3.Gain
         }
               
+        renderFluorescence(data);  // fluorescence-assist panel (self-gates; safe every poll)
+
         // Now to draw the charts
         if( document.getElementById("GraphReplot").value!== data.time.record.length || document.getElementById("FPRefresh").innerHTML != data.UIDevice){
 		  
@@ -772,3 +774,71 @@ if (window.MutationObserver){
     if (window._lastSysData) redrawCharts(window._lastSysData);
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
+
+
+// ===================== Fluorescence assist: EEM heatmap + recommendation + apply =====================
+var _BAND_WL = {nm410:410, nm440:440, nm470:470, nm510:510, nm550:550, nm583:583, nm620:620, nm670:670};
+var _FLUOR_RAMP = ['#eef4fb','#cde2fb','#9ec5f4','#6da7ec','#3987e5','#1c5cab','#0d366b']; // sequential blue
+function _fluorColor(frac){ frac = Math.max(0, Math.min(1, frac)); return _FLUOR_RAMP[Math.round(frac*(_FLUOR_RAMP.length-1))]; }
+
+// Renders the scan result. Self-gates on a signature so it only rebuilds when the result changes
+// (not every poll), which also keeps a user's "Applied…" status message from being clobbered.
+function renderFluorescence(data){
+  var fs = data.FluorescenceScan; if(!fs) return;
+  var status = document.getElementById('FluorStatus'); if(!status) return;
+  if(fs.status === 'running'){ status.textContent = 'Scanning… (~30–90 s)'; window._fluorSig = 'running'; return; }
+  if(status.textContent.indexOf('Scanning') === 0) status.textContent = '';   // scan just finished
+  var n = fs.matrix ? Object.keys(fs.matrix).length : 0;
+  if(!n) return;
+  var r = fs.recommendation;
+  var sig = n + '|' + (r ? r.excite + r.emit1 + r.emit2 : 'none');
+  if(window._fluorSig === sig) return;
+  window._fluorSig = sig;
+
+  var recEl = document.getElementById('FluorRec'), hmEl = document.getElementById('FluorHeatmap');
+  if(r){
+    window._fluorRec = r;
+    recEl.innerHTML = '<b>Recommended:</b> excite <b>'+r.excite+'</b> ('+r.excite_nm+' nm), base '+r.base
+      + ', emit1 <b>'+r.emit1+'</b> ('+r.emit1_nm+' nm), emit2 '+r.emit2+' ('+r.emit2_nm+' nm), gain '+r.gain
+      + ' &nbsp; <button class="btn btn-sm btn-success fluorApply" data-fp="1">→ FP1</button>'
+      + ' <button class="btn btn-sm btn-success fluorApply" data-fp="2">→ FP2</button>'
+      + ' <button class="btn btn-sm btn-success fluorApply" data-fp="3">→ FP3</button>';
+  } else {
+    window._fluorRec = null;
+    recEl.innerHTML = '<i>No clear fluorescence peak found — the sample may be non-fluorescent.</i>';
+  }
+
+  var bands = fs.bands || [], maxv = 0;
+  for(var led in fs.matrix){ for(var i=0;i<bands.length;i++){ var v=fs.matrix[led][bands[i]]||0; if(v>maxv) maxv=v; } }
+  if(maxv <= 0) maxv = 1;
+  var rows = Object.keys(fs.matrix).sort(function(a,b){ return fs.matrix[a]._wl - fs.matrix[b]._wl; });
+  var h = '<table style="border-collapse:collapse;font-size:12px"><tr><th style="padding:3px 6px;text-align:left">excite \\ emit (nm)</th>';
+  for(var i=0;i<bands.length;i++) h += '<th style="padding:3px 6px">'+bands[i].replace('nm','')+'</th>';
+  h += '</tr>';
+  for(var ri=0;ri<rows.length;ri++){
+    var led = rows[ri], row = fs.matrix[led];
+    h += '<tr><td style="padding:3px 6px;white-space:nowrap"><b>'+led+'</b> '+row._wl+'</td>';
+    for(var i=0;i<bands.length;i++){
+      var b = bands[i], v = row[b]||0;
+      var scatter = _BAND_WL[b] < row._wl + 20;                       // below the Stokes shift = scatter
+      var isRec = r && led === r.excite && b === r.emit1;
+      h += '<td style="padding:3px 6px;text-align:center;background:'+_fluorColor(v/maxv)+';color:'+((v/maxv)>0.5?'#fff':'#222')+';'
+        + (scatter?'opacity:0.4;':'') + (isRec?'outline:2px solid #e34948;':'') + '">'+Math.round(v)+'</td>';
+    }
+    h += '</tr>';
+  }
+  hmEl.innerHTML = h + '</table>';
+}
+
+$(function(){
+  $('#FluorScanQuick').click(function(){ $.ajax({type:'POST', url:'/FluorescenceScan/0/quick'}); document.getElementById('FluorStatus').textContent = 'Scanning… (~30–90 s)'; window._fluorSig = 'running'; });
+  $('#FluorScanFull').click(function(){ $.ajax({type:'POST', url:'/FluorescenceScan/0/full'}); document.getElementById('FluorStatus').textContent = 'Scanning… (full sweep, minutes)'; window._fluorSig = 'running'; });
+  // Apply fills the FP dropdowns; the user reviews and clicks that FP's Active button to enable.
+  $(document).on('click', '.fluorApply', function(){
+    var r = window._fluorRec; if(!r) return;
+    var n = $(this).data('fp');
+    $('#FPExcite'+n).val(r.excite); $('#FPBase'+n).val(r.base);
+    $('#FPEmit'+n+'A').val(r.emit1); $('#FPEmit'+n+'B').val(r.emit2); $('#FPGain'+n).val(r.gain);
+    document.getElementById('FluorStatus').textContent = 'Applied to FP'+n+' — review the FP'+n+' fields, then click its Active button to enable.';
+  });
+});

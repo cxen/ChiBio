@@ -13,10 +13,16 @@ from chibio_state import sysData, sysItems
 
 logger = logging.getLogger('chibio')
 
-# Excitation LED -> approximate peak wavelength (nm). Only the reasonably monochromatic
-# LEDs make sense as excitation sources; the white LEDs (LEDG/LEDV) are left out of the scan.
-EXCITATION_LEDS = [('LEDA', 395), ('LEDB', 457), ('LEDC', 500), ('LEDD', 523),
-                   ('LEDI', 550), ('LEDE', 595), ('LEDH', 600), ('LEDF', 623)]
+# Excitation LED -> approximate peak wavelength (nm). The available LEDs differ by control-board
+# LED version (see the FPExcite dropdowns in HTMLScripts.js); only the reasonably monochromatic
+# ones are used as excitation sources (white LEDs left out). Driving an LED absent on this board
+# would be a silent no-op, so pick the set that actually exists.
+_EXCITATION_V1 = [('LEDA', 395), ('LEDB', 457), ('LEDC', 500), ('LEDD', 523), ('LEDE', 595), ('LEDF', 623)]
+_EXCITATION_V2 = [('LEDB', 457), ('LEDC', 500), ('LEDD', 523), ('LEDI', 550), ('LEDH', 600), ('LEDF', 623)]
+
+
+def excitation_leds(M):
+    return _EXCITATION_V2 if sysData[M].get('Version', {}).get('LED') == 2 else _EXCITATION_V1
 # AS7341 emission channel -> center wavelength (nm). These are the discrete detection bands.
 EMISSION_BANDS = [('nm410', 410), ('nm440', 440), ('nm470', 470), ('nm510', 510),
                   ('nm550', 550), ('nm583', 583), ('nm620', 620), ('nm670', 670)]
@@ -109,9 +115,11 @@ def fluorescence_scan(M, mode='quick'):
     mode = 'full' if str(mode) == 'full' else 'quick'
     powers = _FULL_POWERS if mode == 'full' else [_QUICK_POWER]
     addTerminal(M, 'Fluorescence scan (' + mode + ') started')
+    sysData[M]['FluorescenceScan'] = {'matrix': {}, 'recommendation': None, 'mode': mode,
+                                      'status': 'running', 'bands': [b for b, _ in EMISSION_BANDS]}
 
     eem = {}
-    for led, wl in EXCITATION_LEDS:
+    for led, wl in excitation_leds(M):
         best_total, best_row = -1.0, None
         for p in powers:
             set_output_target_sync(M, led, p)
@@ -131,10 +139,9 @@ def fluorescence_scan(M, mode='quick'):
         eem[led] = best_row
         addTerminal(M, 'Scanned ' + led + ' (' + str(wl) + 'nm)')
 
-    sysData[M]['FluorescenceScan'] = {
+    sysData[M]['FluorescenceScan'].update({
         'matrix': eem,
         'recommendation': recommend_fp_settings(eem),
-        'mode': mode,
-        'bands': [b for b, _ in EMISSION_BANDS],
-    }
+        'status': 'done',
+    })
     addTerminal(M, 'Fluorescence scan complete')

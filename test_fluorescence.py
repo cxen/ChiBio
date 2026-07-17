@@ -46,6 +46,7 @@ import chibio_fluorescence as F
 M = 'M0'
 sd = chibio_state.sysData[M]
 sd.setdefault('AS7341', {}).setdefault('current', {})
+sd['Version'] = {'LED': 2}  # V2 board -> LEDB/C/D/I/H/F excitation set
 
 _state = {'led': None}
 app.set_output_on_sync = lambda m, item, v: _state.__setitem__('led', item if int(v) == 1 else None)
@@ -62,7 +63,7 @@ chibio_optics.get_light = fake_get_light
 
 F.fluorescence_scan(M, 'quick')
 fs = sd['FluorescenceScan']
-assert set(fs['matrix']) == {led for led, _ in F.EXCITATION_LEDS}, "EEM must cover every excitation LED"
+assert set(fs['matrix']) == {led for led, _ in F.excitation_leds(M)}, "EEM must cover every V2 excitation LED"
 # gain-normalised: nm510 = 600 / (0.5 * 2**5=16) = 37.5
 assert abs(fs['matrix']['LEDB']['nm510'] - 37.5) < 1e-6, fs['matrix']['LEDB']['nm510']
 r = fs['recommendation']

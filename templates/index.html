@@ -1104,6 +1104,18 @@
 
 
 <div hidden id="FPRefresh"></div>
+
+<!-- Fluorescence configuration assist: scan the sample, recommend + apply FP settings -->
+<div id="fluorAssist" style="border:1px solid #ccc; border-radius:8px; padding:12px 14px; margin:12px 0;">
+  <h4 style="margin:0 0 4px">Fluorescence assist</h4>
+  <div style="font-size:13px; color:#888; margin-bottom:8px">Scan the sample across the excitation LEDs to find the strongest excitation and emission bands, then apply the result to an FP slot below.</div>
+  <button id="FluorScanQuick" class="btn btn-sm btn-primary">Quick scan</button>
+  <button id="FluorScanFull" class="btn btn-sm btn-outline-secondary">Full sweep</button>
+  <span id="FluorStatus" style="margin-left:10px; font-size:13px; color:#999"></span>
+  <div id="FluorRec" style="margin-top:10px; font-size:14px"></div>
+  <div id="FluorHeatmap" style="margin-top:10px; overflow-x:auto"></div>
+</div>
+
 <div align='center'><h3>FP 1</h3><button id="FP1Switch" >Active</button> </div>
         <br>
          <div id="Control1"  class="container">
