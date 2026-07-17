@@ -205,6 +205,9 @@ def initialise(M):
         sysData[M][FP]['GainUsed']=int(sysData[M][FP]['Gain'][1:])  #gain the last FP read landed on
         sysData[M][FP]['spread']=0.0  #max-min of the replicate FP base reads.
 
+    #Fluorescence-assist scan result (excitation-emission matrix + recommended FP settings).
+    sysData[M]['FluorescenceScan']={'matrix':{}, 'recommendation':None, 'mode':'', 'bands':[]}
+
     sysData[M]['ThermometerInternal']['current']=0.0
     sysData[M]['ThermometerExternal']['current']=0.0
     sysData[M]['ThermometerIR']['current']=0.0
@@ -443,6 +446,15 @@ def SetFPMeasurement(item,Excite,Base,Emit1,Emit2,Gain):
         sysData[M][FP]['Emit2Band']=Emit2
         sysData[M][FP]['Gain']=Gain
         return ('', 204)
+
+
+@application.route("/FluorescenceScan/<M>/<mode>",methods=['POST'])
+def FluorescenceScan(M,mode):
+    #Scan the sample across excitation LEDs, build an EEM and recommend FP settings.
+    #mode: 'quick' (one power/LED) or 'full' (power sweep). See chibio_fluorescence.
+    from chibio_fluorescence import fluorescence_scan
+    run_background(fluorescence_scan, M, str(mode))
+    return ('', 204)
 
 
 # ponytail: cross-request ordering race. SetOutputTarget/SetOutputOn run as
