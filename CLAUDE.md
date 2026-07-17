@@ -50,6 +50,20 @@ The whole system is **global mutable state + threads + one serialized I2C pipe**
 - **Sensor-read failures never put `NaN` in `sysData`.** `sysData` is `jsonify`'d to the UI (a raw `NaN` breaks the browser's `JSON.parse`) and OD feeds `RegulateOD` (which drives pumps). So a failed AS7341 read sets a per-read `valid=0` flag and keeps the last-known numeric value; **only the CSV cell becomes `NaN`** (in `csvData`), so failures stay distinguishable in analysis without endangering the live loop. See the `sensor-failure-semantics` memory.
 - **AS7341 gain auto-ranging is FP-only.** `get_light(autorange=True)` is safe for FP (base/emit are read in one shot, so the emit/base ratio is gain-invariant) and records the gain used. Never enable it for OD (its gain is locked to the OD calibration constants) or `get_spectrum` (it feeds `CharacteriseDevice`, which compares raw counts across a power sweep).
 
+### GUI work runs a fixed skill sequence
+
+**Any request that changes the UI/GUI** (`templates/index.html`, `static/HTMLScripts.js`, `static/*.css`, chart rendering) runs the skills below **for each change or step**, in this order. This is standing policy — it does not need to be asked for.
+
+0. **Get the device's real state first** — see the hardware-first note at the top. `ssh ChiBio`, `curl` `/getSysdata/`, and drive any off-device preview from that snapshot. Which LED version is fitted (V1 vs V2 = different excitation panels) and which reactors are present decide what the UI even renders. Do this *before* the design skills, not after.
+1. **`/frontend-design`** — aesthetic direction and intent, before writing markup.
+2. **`/better-colors`** — OKLCH, palettes, contrast. Output lands in the `:root` token block (see the colour convention above), never as a hex in a rule or an inline style.
+3. **`/better-typography`** — type scale, hierarchy, wrapping, tabular numbers for live readings.
+4. **`/better-ui`** — polish: states, spacing, borders, optical alignment, micro-interactions.
+5. **`/emil-design-eng`** — component and interaction judgement; the invisible details.
+6. **`/critical-code-reviewer`** — last, once the code exists, to review it as code.
+
+Reorder *within* the design skills (1–5) when a change makes it sensible — a pure colour fix doesn't need the type scale. But 0 stays first and 6 stays last: you can't design against a device you haven't looked at, and you can't code-review code you haven't written yet. A change is not done until it has been seen **on the device**, in both themes — the off-device preview and `device_selftest.py` (I2C only) do not cover the GUI.
+
 ### Testing off-device
 
 There is a small suite of `test_*.py` files that run on a laptop (no BeagleBone) — the payoff of the `CHIBIO_MOCK_HW` import guard. They need only the pure-Python deps (`flask numpy smbus2 simplejson`) in a venv. Run e.g. `CHIBIO_MOCK_HW=1 python3 test_read_validity.py`. Current suite: `test_import_smoke`, `test_csv_equivalence`, `test_metadata_sidecar`, `test_read_validity`, `test_autorange`, `test_replicate`, `test_fluorescence`. They cover the pure logic (analysis, CSV schema, aggregation) that would otherwise be untestable; hardware paths still need the device. The device is verified with `device_selftest.py <label>` against a running server (safe presence scan + every I2C path); the deploy/verify loop (rsync to `/root/chibio-staging`, boot, self-test, then promote to `/root/chibio`) is in the `device-deployment` memory.
