@@ -69,4 +69,26 @@ assert abs(fs['matrix']['LEDB']['nm510'] - 37.5) < 1e-6, fs['matrix']['LEDB']['n
 r = fs['recommendation']
 assert r['excite'] == 'LEDB' and r['emit1'] == 'nm510', r
 
-print("PASS: Stokes analysis picks the fluorescence peak (ignoring scatter); scan builds a gain-normalised EEM + recommendation")
+# --- C) FP3's default excitation must be drivable on the board's LED version ---
+# FP3 defaults to LEDE (595nm), which only exists on V1. Driving an absent LED is a silent
+# no-op, so on a V2 board FP3 excited nothing while still logging the emit/base ratio as a
+# valid reading (and its Excite dropdown rendered blank -- no LEDE in the V2 option list).
+# app.initialise() remaps it to LEDH; this asserts LEDH is the right analogue, not an arbitrary
+# pick. That initialise() actually applies the remap is a hardware path -- verified on device.
+sd['Version'] = {'LED': 1}
+v1 = dict(F.excitation_leds(M))
+sd['Version'] = {'LED': 2}
+v2 = dict(F.excitation_leds(M))
+
+assert v1['LEDE'] == 595
+assert 'LEDE' not in v2, "LEDE is V1-only; if it gains a V2 channel the remap is obsolete"
+assert 'LEDH' in v2, "the remap target must be a real V2 excitation LED"
+# LEDH (600nm) is the nearest V2 channel to LEDE's 595nm -- it takes LEDE's slot in the set.
+assert min(v2, key=lambda led: abs(v2[led] - v1['LEDE'])) == 'LEDH', v2
+# ...and it must keep a real Stokes shift to FP3's default nm620/nm670 emission bands, or the
+# "excitation scatter, not fluorescence" rule would reject everything FP3 reads.
+bands = dict(EMISSION_BANDS)
+for emit in ('nm620', 'nm670'):
+    assert bands[emit] - v2['LEDH'] >= F.STOKES_MIN_SHIFT, (emit, bands[emit], v2['LEDH'])
+
+print("PASS: Stokes analysis picks the fluorescence peak (ignoring scatter); scan builds a gain-normalised EEM + recommendation; FP3's V2 excitation remap (LEDE->LEDH) is the nearest valid channel and keeps its Stokes shift")

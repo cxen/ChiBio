@@ -278,6 +278,16 @@ def initialise(M):
             sysData[M]['Version']['LED']=1 #We have messed up somehow in this case and stuff isn't going to work well
             print(str(datetime.now()) + " ERROR on " + str(M) +', this device has an unknown LED version. Defaulting to version 1.')
 
+        # The FP defaults above are set before the version is known, and FP3's (LEDE, 595nm) is
+        # a V1-only channel. Driving an absent LED is a silent no-op, so on V2 this left FP3
+        # exciting nothing while still recording the emit/base ratio as a valid reading -- and
+        # it rendered the Excite dropdown blank, since the V2 option list has no LEDE. LEDH
+        # (600/80) is the V2 analogue: it takes LEDE's slot in the excitation set and keeps the
+        # >=20nm Stokes shift to FP3's nm620/nm670 emission bands. FP1 (LEDB) and FP2 (LEDD)
+        # exist on both versions and need no remap.
+        if sysData[M]['Version']['LED']==2:
+            sysData[M]['FP3']['LED']="LEDH"
+
         print(str(datetime.now()) + " Initialised " + str(M) +', LED Version: ' + str(sysData[M]['Version']['LED']) + ', Device ID: ' + sysData[M]['DeviceID'])
 
 
