@@ -8,6 +8,26 @@ from chibio_state import sysData, sysItems
 logger = logging.getLogger('chibio')
 
 
+# ~92% of the 16-bit (65535) ADC ceiling. Above this the CLEAR "base" compresses toward
+# clipping, so the emit/base ratio inflates and reads as an artifactual signal change.
+# get_light's autorange only retries on an EXACT 65535, so near-ceiling bases slip through
+# (measured on a dense culture: 27% of FP cycles > 60000, some pinned at the ceiling).
+# ponytail: fixed threshold; retune against a saturating culture if 60000 proves off.
+_FP_BASE_NEAR_SATURATION = 60000
+
+
+def _fp_valid_flag(base, as7341_valid):
+    # A near-saturated CLEAR base makes the emit/base ratio untrustworthy, so mark the read
+    # invalid — csvData then logs NaN for the cell instead of a silently-corrupted ratio,
+    # keeping the same validity/NaN contract as a comms failure (see the
+    # sensor-failure-semantics and fluorescence-quantification-untrustworthy memories).
+    if as7341_valid == 0:
+        return 0
+    if base >= _FP_BASE_NEAR_SATURATION:
+        return 0
+    return 1
+
+
 def _record_od_dark(M, out):
     #out[0]=CLEAR transmission (raw), out[1]=the DARK background channel measured in the
     #same read. Keep raw untouched (never overwrite it); store the dark value and the
@@ -129,7 +149,7 @@ def measure_fp(M):
             else:#This might happen if you try to measure in CLEAR whilst also having CLEAR as baseband!
                 sysData[M][FP]['Emit1']=float(out[1])
                 sysData[M][FP]['Emit2']=float(out[2])
-            sysData[M][FP]['valid']=sysData[M]['AS7341']['current'].get('valid',1) #see sensor-failure-semantics
+            sysData[M][FP]['valid']=_fp_valid_flag(sysData[M][FP]['Base'],sysData[M]['AS7341']['current'].get('valid',1)) #see sensor-failure-semantics + the near-saturation guard above
 
 
 def measure_temp(M, which):
