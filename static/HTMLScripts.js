@@ -736,6 +736,16 @@ function initLogToggles(){
 if (document.readyState !== 'loading') initLogToggles();
 else document.addEventListener('DOMContentLoaded', initLogToggles);
 
+// At rest uPlot's cursor is off-plot (idx null) and the legend value cells blank to "--". Show
+// the most-recent data point instead; while hovering, uPlot's own cursor.idx drives the cells and
+// mouse-leave (idx back to null) reverts to latest. Uses the public setLegend, which doesn't move
+// the cursor, so there's no re-entrancy with the setCursor hook. No custom legend DOM.
+function showLatestWhenIdle(u){
+  if (u.cursor.idx == null && u.data[0] && u.data[0].length){
+    u.setLegend({ idx: u.data[0].length - 1 });
+  }
+}
+
 // seriesDefs: [{label, data, role:'s0'|'s1'|'s2'|'muted', width, dash, hidden}]
 // band (optional): {series:[hiIdx, loIdx], fill}
 function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
@@ -807,9 +817,11 @@ function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
       yAxis
     ],
     series: uSeries,
-    legend: { show: true }
-    // uPlot's default cursor already draws a crosshair and shows live values in the legend
-    // on hover -- the dataviz "hover layer". A custom cursor.focus needs extra DOM setup.
+    legend: { show: true },
+    // uPlot's default cursor draws a crosshair and shows live values in the legend on hover.
+    // The hooks fill the value cells with the latest point when the cursor is off-plot, so the
+    // legend is informative at rest instead of showing "--" (see showLatestWhenIdle).
+    hooks: { ready: [showLatestWhenIdle], setData: [showLatestWhenIdle], setCursor: [showLatestWhenIdle] }
   };
   if (band) opts.bands = [{ series: band.series, fill: band.fill }];
 
