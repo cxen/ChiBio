@@ -86,6 +86,11 @@
   .u-legend .u-series:hover { text-decoration: underline; }
   .u-legend .u-off > * { opacity: 1; color: var(--text-muted); text-decoration: line-through; }
   .u-legend .u-off .u-marker { opacity: 0.4; }
+  /* The series marker reads as a colour swatch, not a hollow "checkbox" square that invites
+     ticking. uPlot colours it via an inline `border: 2px solid <stroke>`, so a short pill
+     whose 2px border fills its 4px height shows as a solid bar in the series colour -- no JS,
+     and the click-to-hide affordance (strike-through + dim above) is untouched. */
+  .u-legend .u-marker { width: 14px; height: 4px; border-radius: 999px; margin-right: 6px; }
 
   /* The live legend is a <table> whose value cell swaps between "--" and a reading as the
      cursor moves. Left alone the value column resizes to fit, and since uPlot.min.css sets
@@ -108,7 +113,10 @@
   a { color: var(--accent); }
   hr { border-top-color: var(--border); }
   .u-legend { color: var(--text); }
-  html[data-theme="dark"] .u-legend .u-marker { border-color: currentColor; }
+  /* Drag-to-zoom selection rectangle. Vendored uPlot.min.css fills it rgba(0,0,0,0.07) -- a
+     black wash that vanishes on the dark surface. Theme it: accent-tinted fill (--band) plus a
+     1px accent edge so it reads in both modes. Overrides the vendor rule by source order. */
+  .u-select { background: var(--band); border: 1px solid var(--accent); }
   input, select, textarea {
     background: var(--surface); color: var(--text); border: 1px solid var(--border); }
   /* :not(.btn) rather than :not([class]) -- the state classes added by setActive()
@@ -771,7 +779,7 @@
       </div>
       
       
-       <div id="UVContainer"  class="container panel panel--ch" style="--channel:#a5e1ff">
+       <div id="UVContainer"  class="container panel panel--ch" style="--channel:#A257FE">
         <div class="row">
             <div class="col-2 align-self-center">
              <b> 280nm <br>UV</b>
