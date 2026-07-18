@@ -898,6 +898,11 @@ function _fluorColor(frac){ frac = Math.max(0, Math.min(1, frac)); return _FLUOR
 // Renders the scan result. Self-gates on a signature so it only rebuilds when the result changes
 // (not every poll), which also keeps a user's "Applied…" status message from being clobbered.
 function renderFluorescence(data){
+  // V2 boards have no ~488 nm channel (LEDB 457 -> LEDC 500 gap), so GFP is under-excited and its
+  // cleanest onboard readout is the least-bad LEDB->nm510. Surface that caveat only on V2 (the note
+  // is independent of any scan, so set it before the scan early-returns below).
+  var v2note = document.getElementById('FluorV2Note');
+  if(v2note && data.Version) v2note.style.display = (data.Version.LED == 2) ? '' : 'none';
   var fs = data.FluorescenceScan; if(!fs) return;
   var status = document.getElementById('FluorStatus'); if(!status) return;
   if(fs.status === 'running'){ status.textContent = 'Scanning… (~30–90 s)'; window._fluorSig = 'running'; return; }

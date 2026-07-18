@@ -21,7 +21,17 @@ into the modules below and retired; it remains in git history if ever needed.
 - **I2C on `smbus2`.** The device layer was migrated off `Adafruit_GPIO` to a small
   `smbus2` wrapper in `chibio_hardware.py`. GPIO/PWM still use `Adafruit_BBIO`.
 - **Pinned dependencies** (`requirements.txt`) and an EOL-safe provisioning path.
-- **UI:** a dark-mode toggle.
+- **UI:** self-hosted uPlot charts (no CDNs), a dark-mode toggle, a per-chart
+  **ln y-axis toggle** (true base e — exponential growth reads as a straight line,
+  slope = μ; on the OD/FP/growth charts), legends that show the **latest value at
+  rest** and the cursor value on hover, and a **fluorescence-assist** panel
+  (scan → recommended excite/emit bands → apply to an FP slot).
+- **Data integrity.** Sensor-read failures set a `valid` flag and log `NaN` only in
+  the CSV (never a raw `NaN` in the live state); OD/FP take a 3× median + spread; a
+  per-experiment metadata sidecar (`<start>_<M>_meta.json`) plus a **mid-run events
+  log** (`<start>_<M>_events.json`) make each dataset self-describing when FP bands
+  or the OD blank change during a run. A near-saturation guard flags fluorescence
+  reads whose CLEAR base rides the ADC ceiling.
 
 > **You cannot run this on a macOS/Linux dev machine.** Importing `app.py` triggers
 > `initialiseAll()`, which talks to GPIO/I2C hardware and spawns the watchdog.
@@ -100,5 +110,17 @@ changes don't silently regress readings. It safely discovers connected reactors
 first (via `/scanDevices/all` + `presentDevices`) rather than measuring absent
 devices, which would trip the watchdog kill.
 
-There are no unit tests, no linter, and no build step — the code only runs on
-hardware.
+There is no linter and no build step. A small suite of `test_*.py` files runs
+**off-device** under `CHIBIO_MOCK_HW=1` (an import shim that swaps in a no-op GPIO
+and skips the watchdog/init), covering the pure logic that doesn't need hardware —
+CSV schema, metadata/events sidecars, read-validity, auto-ranging, replicate
+aggregation, the FP saturation guard, and the fluorescence analysis:
+
+```
+python3 -m venv v && v/bin/pip install flask numpy smbus2 simplejson
+CHIBIO_MOCK_HW=1 v/bin/python test_fluorescence.py   # (and the other test_*.py)
+```
+
+Hardware paths still need the device (`device_selftest.py`, above). The device
+is otherwise the reference you design against — the mock is only an import shim,
+not a development target.
