@@ -682,18 +682,83 @@ function toHours(arr){
   return out;
 }
 
+// --- Per-chart natural-log (base e) y-axis --------------------------------------------------
+// A ln y-axis turns exponential growth into a straight line whose slope IS the growth rate mu
+// (per hour) -- far easier to read the onset of exponential phase, rate changes and diauxie than
+// the raw curve. uPlot's native log scale only does base 10/2, so we plot ln(y) on a LINEAR axis
+// and format the ticks + legend back to real values with Math.exp. Non-positive values (blanked
+// OD/FP dips, negative growth-rate estimates) have no logarithm and mask to null. The x/Time axis
+// is never logged. Offered per-chart, on the exponential-signal charts only.
+var chartLog = {};                    // plotID -> bool (ln axis on)
+var LOG_CHARTS = [1, 4, 5, 6, 7];     // OD, FP1-3, Growth Rate (Temperature/Pump stay linear)
+
+function fmtNice(v){ return (+v.toPrecision(2)).toString(); }
+
+// 1-2-5 "nice" gridlines whose ln falls in the visible range, returned in ln (data) space so a
+// linear axis places them; labelled back to real values by logAxisValues.
+function logSplits(u, axisIdx, minLn, maxLn){
+  if (!isFinite(minLn) || !isFinite(maxLn) || maxLn <= minLn) return [minLn, maxLn];
+  var lo = Math.exp(minLn), hi = Math.exp(maxLn), out = [], mant = [1, 2, 5];
+  for (var e = Math.floor(Math.log(lo) / Math.LN10); e <= Math.ceil(Math.log(hi) / Math.LN10); e++){
+    for (var m = 0; m < 3; m++){
+      var val = mant[m] * Math.pow(10, e);
+      if (val >= lo * 0.999 && val <= hi * 1.001) out.push(Math.log(val));
+    }
+  }
+  return out.length ? out : [minLn, maxLn];
+}
+function logAxisValues(u, splits){
+  return splits.map(function(s){ return s == null ? '' : fmtNice(Math.exp(s)); });
+}
+
+// Inject a small ln toggle above each exponential-signal chart (once). Label stays "ln"; the
+// .is-on/aria-pressed state (shared control pattern) shows whether the log axis is active.
+function initLogToggles(){
+  LOG_CHARTS.forEach(function(id){
+    var chart = document.getElementById('chart_div' + id);
+    if (!chart || document.getElementById('logToggle' + id)) return;
+    var btn = document.createElement('button');
+    btn.id = 'logToggle' + id;
+    btn.type = 'button';
+    btn.className = 'log-toggle';
+    btn.textContent = 'ln';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.title = 'Natural-log (lnₑ) y-axis: exponential growth becomes a straight line, slope = growth rate';
+    btn.addEventListener('click', function(){
+      chartLog[id] = !chartLog[id];
+      btn.classList.toggle('is-on', chartLog[id]);
+      btn.setAttribute('aria-pressed', chartLog[id] ? 'true' : 'false');
+      if (window._lastSysData) redrawCharts(window._lastSysData);
+    });
+    chart.parentNode.insertBefore(btn, chart);
+  });
+}
+if (document.readyState !== 'loading') initLogToggles();
+else document.addEventListener('DOMContentLoaded', initLogToggles);
+
 // seriesDefs: [{label, data, role:'s0'|'s1'|'s2'|'muted', width, dash, hidden}]
 // band (optional): {series:[hiIdx, loIdx], fill}
 function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
   var el = document.getElementById('chart_div' + plotID);
   if (!el) return;
 
+  // In ln mode, plot ln(y) (non-positive -> null); a new array each poll leaves the raw records
+  // untouched for reuse. Done before the setData/rebuild branch so both paths get log data.
+  var isLog = !!chartLog[plotID];
   var data = [x];
-  for (var i = 0; i < seriesDefs.length; i++) data.push(seriesDefs[i].data);
+  for (var i = 0; i < seriesDefs.length; i++){
+    var sd = seriesDefs[i].data;
+    if (isLog){
+      var tln = new Array(sd.length);
+      for (var t = 0; t < sd.length; t++){ var vv = sd[t]; tln[t] = (vv != null && vv > 0) ? Math.log(vv) : null; }
+      sd = tln;
+    }
+    data.push(sd);
+  }
 
-  // Rebuild only when theme / series identity / band presence changes; otherwise setData.
+  // Rebuild only when theme / series identity / band presence / log mode changes; otherwise setData.
   var key = th.dark + '|' + ylabel + '|' +
-            seriesDefs.map(function(s){ return s.label; }).join(',') + '|' + (band ? 'B' : '');
+            seriesDefs.map(function(s){ return s.label; }).join(',') + '|' + (band ? 'B' : '') + '|' + (isLog ? 'L' : '');
   if (uplots[plotID] && uplotKey[plotID] === key){
     uplots[plotID].setData(data);
     return;
@@ -707,13 +772,18 @@ function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
   function fixed(dp){
     return function(u, v){ return v == null ? '--' : v.toFixed(dp); };
   }
+  // In ln mode the stored value is ln(y); the legend/cursor must show the real reading (exp).
+  function logfixed(dp){
+    return function(u, v){ return v == null ? '--' : Math.exp(v).toFixed(dp); };
+  }
+  var yval = isLog ? logfixed(3) : fixed(3);
 
-  var uSeries = [{ label: 'Time (h)', value: fixed(2) }];
+  var uSeries = [{ label: 'Time (h)', value: fixed(2) }];  // x/Time stays linear
   for (var j = 0; j < seriesDefs.length; j++){
     var s = seriesDefs[j];
     uSeries.push({
       label:  s.label,
-      value:  fixed(3),
+      value:  yval,
       stroke: s.hidden ? 'rgba(0,0,0,0)' : roleColor(th, s.role),
       width:  s.hidden ? 0 : (s.width || 2),
       dash:   s.dash ? [6, 4] : undefined,
@@ -721,13 +791,20 @@ function drawUplot(plotID, th, ylabel, x, seriesDefs, band){
     });
   }
 
+  // y-axis: linear by default; in ln mode keep the axis linear (over ln-transformed data) but
+  // place ticks at 1-2-5 values and label them back to real readings. x stays linear always.
+  var yAxis = { label: isLog ? ylabel + ' (lnₑ)' : ylabel, stroke: th.muted,
+    grid: { stroke: th.grid, width: 1 }, ticks: { stroke: th.grid, width: 1 },
+    font: '12px sans-serif', labelFont: '13px sans-serif' };
+  if (isLog){ yAxis.splits = logSplits; yAxis.values = logAxisValues; }
+
   var opts = {
     width:  Math.max(260, el.clientWidth || (el.parentNode ? el.parentNode.clientWidth : 0) || 600),
     height: 300,
     scales: { x: { time: false } },
     axes: [
       { stroke: th.muted, grid: { stroke: th.grid, width: 1 }, ticks: { stroke: th.grid, width: 1 }, font: '12px sans-serif' },
-      { label: ylabel, stroke: th.muted, grid: { stroke: th.grid, width: 1 }, ticks: { stroke: th.grid, width: 1 }, font: '12px sans-serif', labelFont: '13px sans-serif' }
+      yAxis
     ],
     series: uSeries,
     legend: { show: true }

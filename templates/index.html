@@ -117,6 +117,18 @@
      black wash that vanishes on the dark surface. Theme it: accent-tinted fill (--band) plus a
      1px accent edge so it reads in both modes. Overrides the vendor rule by source order. */
   .u-select { background: var(--band); border: 1px solid var(--accent); }
+  /* Per-chart ln y-axis toggle (injected by HTMLScripts.js above the exponential-signal charts).
+     Small, right-aligned, overlays the chart's top-right corner. Reuses the shared control
+     on-state tokens so both themes work; label stays "ln", .is-on shows the log axis is active. */
+  .log-toggle {
+    float: right; position: relative; z-index: 2;
+    margin: 2px 4px -28px 0; padding: 2px 9px;
+    font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums;
+    border-radius: 6px; cursor: pointer;
+    transition: transform 120ms ease-out, background-color 120ms ease;
+  }
+  .log-toggle:active { transform: scale(0.96); }
+  .log-toggle.is-on { background: var(--on-bg); color: var(--on-fg); border-color: var(--accent); }
   input, select, textarea {
     background: var(--surface); color: var(--text); border: 1px solid var(--border); }
   /* :not(.btn) rather than :not([class]) -- the state classes added by setActive()
