@@ -445,8 +445,10 @@ def SetFPMeasurement(item,Excite,Base,Emit1,Emit2,Gain):
     Gain=str(Gain)
     M=sysItems['UIDevice']
 
+    from chibio_control_helpers import logEvent
     if sysData[M][FP]['ON']==1:
         sysData[M][FP]['ON']=0
+        logEvent(M, 'fp_config', {'slot': FP, 'on': 0})  #self-describe the mid-run change (no-op if not running)
         return ('', 204)
     else:
         sysData[M][FP]['ON']=1
@@ -455,6 +457,8 @@ def SetFPMeasurement(item,Excite,Base,Emit1,Emit2,Gain):
         sysData[M][FP]['Emit1Band']=Emit1
         sysData[M][FP]['Emit2Band']=Emit2
         sysData[M][FP]['Gain']=Gain
+        logEvent(M, 'fp_config', {'slot': FP, 'on': 1, 'led': Excite, 'base': Base,
+                                  'emit1': Emit1, 'emit2': Emit2, 'gain': Gain})
         return ('', 204)
 
 
@@ -847,8 +851,13 @@ def CalibrateOD(M,item,value,value2):
     
         sysData[M][item]['target']=OD0
         print("Calibrated OD")
-        
-    return ('', 204)    
+
+    #Self-describe a mid-run re-blank/calibration -- a change to the OD zero shifts every
+    #subsequent absolute OD, and was previously unlogged (no-op if no experiment is running).
+    from chibio_control_helpers import logEvent
+    logEvent(M, 'od_calibration', {'item': item, 'device': device,
+                                   'target': sysData[M][item]['target'], 'raw': ODRaw, 'known_od': ODActual})
+    return ('', 204)
     
     
         

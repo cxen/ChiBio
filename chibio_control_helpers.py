@@ -391,6 +391,47 @@ def writeExperimentMetadata(M):
         lock.release()
 
 
+def logEvent(M, event_type, detail):
+    #Append a timestamped record to <startTime>_<M>_events.json so a run self-describes changes
+    #made mid-experiment -- FP band/gain switches, OD re-blanks -- that are otherwise SILENT
+    #discontinuities in the per-slot CSV columns (an FP3_base means different bands before/after a
+    #switch, with nothing recording when). The metadata sidecar is written once at start, so it
+    #goes stale on any such change; this log is the companion that keeps the dataset readable.
+    #No-op unless an experiment is running (nothing to describe otherwise). Written atomically
+    #(temp + os.replace) under the bus lock, so the log is never left half-written and never races
+    #I2C -- same discipline as csvData / writeExperimentMetadata.
+    M = str(M)
+    if sysData[M]['Experiment']['ON'] != 1:
+        return
+    rec = sysData[M]['time']['record']
+    event = {
+        'exp_time': (rec[-1] if rec else None),   #elapsed seconds, aligns with the CSV exp_time column
+        'wall_time': datetime.now().isoformat(timespec='seconds'),
+        'type': str(event_type),
+        'device': M,
+        'detail': detail,
+    }
+    filename = (sysData[M]['Experiment']['startTime'] + '_' + M + '_events.json').replace(":", "_")
+    lock.acquire()
+    try:
+        events = []
+        if os.path.isfile(filename):
+            try:
+                with io.open(filename, 'r') as f:
+                    events = json.load(f)
+                if not isinstance(events, list):
+                    events = []
+            except Exception:
+                events = []   #atomic writes make a partial file unreachable; tolerate an external one
+        events.append(event)
+        tmp = filename + '.tmp'
+        with io.open(tmp, 'w') as f:
+            json.dump(events, f, indent=2, default=str)
+        os.replace(tmp, filename)
+    finally:
+        lock.release()
+
+
 def downsample(M):
     #In order to prevent the UI getting too laggy, we downsample the stored data every few hours. Note that this doesnt downsample that which has already been written to CSV, so no data is ever lost.
     M=str(M)

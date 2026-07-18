@@ -31,6 +31,7 @@ EMISSION_BANDS = [('nm410', 410), ('nm440', 440), ('nm470', 470), ('nm510', 510)
 STOKES_MIN_SHIFT = 20
 _QUICK_POWER = 0.5
 _FULL_POWERS = [0.25, 0.5, 1.0]
+_SCAN_READ_RETRIES = 2  # extra re-reads of a spectrum before accepting a valid=0 (transient) dropout
 
 
 def _gain_multiplier(gain_index):
@@ -42,13 +43,19 @@ def _gain_multiplier(gain_index):
 def _emission_spectrum(M):
     # Read all 8 narrow emission bands. Auto-range on the first (6-band) read, then reuse that
     # gain for the second (2-band) read so all 8 bands share one gain and stay comparable.
+    # A failed AS7341 read keeps the LAST-KNOWN counts (see sensor-failure-semantics), so an
+    # unflagged dropout would bake a stale/zero value into the EEM at the wrong gain and skew the
+    # gain-normalisation. Carry the per-read validity through (_valid = both reads valid) so the
+    # caller can retry or drop the cell instead of trusting it.
     from chibio_optics import get_light
     b1 = ['nm410', 'nm440', 'nm470', 'nm510', 'nm550', 'nm583']
     b2 = ['nm620', 'nm670']
     o1 = get_light(M, b1, 6, 255, autorange=True)
+    v1 = sysData[M]['AS7341']['current'].get('valid', 1)
     g = int(sysData[M]['AS7341']['current'].get('gain', 6))
     o2 = get_light(M, b2, g, 255)
-    spec = {'_gain': g}
+    v2 = sysData[M]['AS7341']['current'].get('valid', 1)
+    spec = {'_gain': g, '_valid': 1 if (v1 and v2) else 0}
     for i, b in enumerate(b1):
         spec[b] = o1[i]
     for i, b in enumerate(b2):
@@ -77,6 +84,8 @@ def recommend_fp_settings(eem):
     band_wl = dict(EMISSION_BANDS)
     best = None  # (signal, led, band)
     for led, row in eem.items():
+        if row is None or row.get('_valid', 1) == 0:
+            continue  # a dead read's stale/zero counts must not be recommended
         led_wl = row['_wl']
         for b, wl in EMISSION_BANDS:
             if wl >= led_wl + STOKES_MIN_SHIFT:
@@ -120,22 +129,30 @@ def fluorescence_scan(M, mode='quick'):
 
     eem = {}
     for led, wl in excitation_leds(M):
-        best_total, best_row = -1.0, None
+        best_row = None
         for p in powers:
             set_output_target_sync(M, led, p)
             set_output_on_sync(M, led, 1)
-            time.sleep(0.1)
-            spec = _emission_spectrum(M)
+            # Dropouts are transient, so re-read a couple of times before accepting an invalid
+            # spectrum; only a genuinely dead read reaches the EEM, and it carries _valid=0.
+            for _attempt in range(_SCAN_READ_RETRIES + 1):
+                time.sleep(0.1)
+                spec = _emission_spectrum(M)
+                if spec['_valid']:
+                    break
             set_output_on_sync(M, led, 0)
             mult = _gain_multiplier(spec['_gain'])
-            row = {'_gain': spec['_gain'], '_wl': wl, '_power': p}
+            row = {'_gain': spec['_gain'], '_wl': wl, '_power': p, '_valid': spec['_valid']}
             total = 0.0
             for b, _ in EMISSION_BANDS:
                 v = float(spec[b]) / mult
                 row[b] = round(v, 3)
                 total += v
-            if total > best_total:
-                best_total, best_row = total, row
+            # Prefer a valid row over any invalid one, then the strongest total among same-validity.
+            if best_row is None or (row['_valid'], total) > (best_row['_valid'], best_row['_total']):
+                row['_total'] = total
+                best_row = row
+        best_row.pop('_total', None)
         eem[led] = best_row
         addTerminal(M, 'Scanned ' + led + ' (' + str(wl) + 'nm)')
 

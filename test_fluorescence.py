@@ -92,3 +92,33 @@ for emit in ('nm620', 'nm670'):
     assert bands[emit] - v2['LEDH'] >= F.STOKES_MIN_SHIFT, (emit, bands[emit], v2['LEDH'])
 
 print("PASS: Stokes analysis picks the fluorescence peak (ignoring scatter); scan builds a gain-normalised EEM + recommendation; FP3's V2 excitation remap (LEDE->LEDH) is the nearest valid channel and keeps its Stokes shift")
+
+
+# --- D) a dead read (valid=0) must not be recommended, even if its stale counts look strongest ---
+eem_bad = {
+    'LEDB': mkrow(457, nm510=999.0),   # looks like a huge peak...
+    'LEDD': mkrow(523, nm583=40.0),
+}
+eem_bad['LEDB']['_valid'] = 0          # ...but it was a dropout -> must be skipped
+eem_bad['LEDD']['_valid'] = 1
+r = recommend_fp_settings(eem_bad)
+assert r is not None and r['excite'] == 'LEDD', ('must skip the invalid LEDB row', r)
+only_bad = {'LEDB': mkrow(457, nm510=999.0)}; only_bad['LEDB']['_valid'] = 0
+assert recommend_fp_settings(only_bad) is None, 'no valid Stokes signal -> recommend nothing'
+# rows without a _valid key (older/pure-analysis callers) are treated as valid, so A) still holds.
+assert recommend_fp_settings({'LEDB': mkrow(457, nm510=50.0)}) is not None
+
+# --- E) the scan retries a transient dropout instead of baking the bad read into the EEM ---
+_calls = {'n': 0}
+def flaky_get_light(m, bands, gain, isteps, autorange=False):
+    _calls['n'] += 1
+    sd['AS7341']['current']['gain'] = 5
+    sd['AS7341']['current']['valid'] = 0 if _calls['n'] <= 1 else 1  # only the very first read drops out
+    return [10 for _ in bands]
+chibio_optics.get_light = flaky_get_light
+F.fluorescence_scan(M, 'quick')
+matrix = sd['FluorescenceScan']['matrix']
+assert all(row['_valid'] == 1 for row in matrix.values()), matrix   # dropout was retried away
+assert _calls['n'] > 2 * len(F.excitation_leds(M)), 'a retry must have added at least one extra read'
+
+print("PASS: dead reads (valid=0) are skipped by the recommender; the scan retries a transient dropout and every EEM row it keeps is valid")
