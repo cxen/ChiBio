@@ -36,7 +36,7 @@ The whole system is **global mutable state + threads + one serialized I2C pipe**
 
 ### Conventions that bite if you miss them
 
-- **Multi-device addressing.** `M0`–`M7` are 8 reactors behind an I2C multiplexer. `M == "0"` is a sentinel meaning "the current UI device" (`sysItems['UIDevice']`) — many functions normalize it at the top.
+- **Multi-device addressing.** `M0`–`M7` are up to 8 reactors behind an I2C multiplexer — but **this rig has 5 physical reactors (`M0`–`M4`)**; `M5`–`M7` are addressable in software and absent in hardware. Plan experiments against 5. `M == "0"` is a sentinel meaning "the current UI device" (`sysItems['UIDevice']`) — many functions normalize it at the top.
 - **Threading model.** Each actuation/experiment runs in a daemon `Thread`. Routes call `run_background(...)` so Gunicorn workers don't time out. Concurrency safety comes *entirely* from `lock` inside `I2CCom` — nothing else is synchronized.
 - **Thread supersession.** Restartable threads use the `threadCount` pattern: a thread captures `currentThread = (threadCount += 1) % 100` and exits as soon as `threadCount` no longer matches it. A separate `running` flag prevents launching duplicates. Preserve both when touching these loops.
 - **Watchdog = safety kill switch.** Setting `sysItems['Watchdog']['ON'] = 0` (or calling `os._exit(4)`) on repeated comms failure is intentional — it crashes hardware and software rather than letting a wedged bus drive actuators. Don't "fix" these by swallowing them.

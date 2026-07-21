@@ -6,7 +6,7 @@ follow at the bench.
 
 **Run 0** (WT in every reactor, ~½ day) and **Run 1** (the real experiment, ~1 day) use the
 identical procedure below. The only difference is what you inoculate: Run 0 puts the same WT
-culture in all six, Run 1 uses the strain assignment in §1. **Do Run 0 first** — it measures the
+culture in all five, Run 1 uses the strain assignment in §1. **Do Run 0 first** — it measures the
 reactor-to-reactor offset that Run 1's subtraction depends on.
 
 ---
@@ -76,12 +76,12 @@ physically:
    If the worry driving the parafilm is contamination or evaporation: an 8 h run at 37 °C from a
    fresh colony in sterile media is low risk, air drawn through a 0.22 µm filter or cotton plug
    carries none, and evaporation through a small vent over 8 h is a few percent and common-mode
-   across all seven reactors.
+   across all five reactors.
 2. **Run 20 mL, not 25 mL.** That's Chi.Bio's own standard working volume and the extra
    headspace plus surface-to-volume meaningfully improves gas exchange in a stirred vial.
 3. **Stir on, every reactor**, including the sterile blank.
 
-**Why the experiment still works:** all seven vials are identically configured — same volume,
+**Why the experiment still works:** all five vials are identically configured — same volume,
 same vent, same stir — so O₂ status is *common-mode* and subtracts out along with the rest of
 the background. That's the whole point of a matched control. What you lose is absolute
 sensitivity, which makes a dim FP a harder call. Hence the vent.
@@ -120,30 +120,40 @@ chromosomal copy, **no antibiotic resistance in any of them**. Three consequence
 
 ## 1. Reactor assignment
 
-Cable **M0–M6** (seven). Leave M7 unconnected — it's the spare, and it keeps the scan window
-short. The strain layout below is chosen so that **scanning in plain numerical order M0 → M6 is
-already correctly interleaved**: every FP reactor is one or two positions from a control, so the
-nearest-in-time control is never more than ~3 min away.
+Cable **M0–M4** — **five reactors is the hardware you have**, not a choice. The strain layout
+below is chosen so that **scanning in plain numerical order M0 → M4 is already correctly
+interleaved**: each FP reactor sits directly next to a WT control, so the nearest-in-time
+control is never more than ~1.5 min away.
 
 | Slot | Run 0 | Run 1 | Role |
 |---|---|---|---|
 | **M0** | WT | **WT-a** (MG1655) | Control |
-| **M1** | WT | **TB205-a** (mCherry) | FP arm — best-served on V2 |
-| **M2** | WT | **TB204** (sfGFP) | FP arm — worst case on V2 |
-| **M3** | WT | **STERILE — never inoculated** | Instrument/tube floor |
+| **M1** | WT | **TB205** (mCherry) | FP arm — best-served on V2, method anchor |
+| **M2** | WT | **STERILE — never inoculated** | Instrument/tube floor |
+| **M3** | WT | **TB204** (sfGFP) | FP arm — worst case on V2, the one the track exists for |
 | **M4** | WT | **WT-b** (MG1655) | Control replicate |
-| **M5** | WT | **TB205-b** (mCherry) | FP replicate |
-| **M6** | WT | **TB201** (mYFP) | FP arm — intermediate |
-| M7 | — | — | Not connected |
 
-**Why the replicates land where they do.** The control is the subtrahend in every subtraction,
-so its noise propagates into every result — it gets n=2. mCherry gets the other n=2 because it
-is the arm most likely to give a clean positive (§7.4), making it your method-validation anchor:
-if subtraction doesn't work there, it won't work anywhere. sfGFP and mYFP run at n=1 to span the
-spectrum. Six cultures plus the sterile blank keeps the reactor count at seven and the scan
-window near 10 min.
+**What five slots costs you, and why the cut falls here.** Three slots are non-negotiable: WT at
+n=2 (the control is the subtrahend in *every* subtraction, so its noise propagates into every
+result) and the sterile blank (the only thing separating instrument drift over the day from
+biology, and it supplies the intercept at every ladder point). That leaves **two FP slots for
+three fluorophores** — so you cannot have both an FP error bar and sfGFP coverage. sfGFP wins:
+the whole fluorescence-quantification track exists because GFP-in-cells sits near the detection
+floor, and a run that validates the method on mCherry alone doesn't answer the question that
+was asked. mCherry stays as the positive anchor — if subtraction fails there it fails
+everywhere.
 
-In Run 0, M3 stays sterile too — it's your floor in both runs.
+**Dropped from the 7-slot version:** the mCherry replicate (so the FP arms are n=1; the error
+bar lives on the control side and on σ_device from Run 0) and **TB201/mYFP entirely**. mYFP is
+the intermediate case — once the method is validated on mCherry and characterised on sfGFP,
+running mYFP is a repeat of a known method, not a new question. Do it as a follow-up run on the
+same rig with the same media recipe.
+
+If you would rather have the FP error bar than sfGFP, the alternative is M3 → **TB205-b**. Don't
+buy mYFP back by dropping WT-b: the control's within-run variance is load-bearing for every
+number in the analysis, and Run 0 gives you the device-offset map but not that.
+
+In Run 0, M2 stays sterile too — it's your floor in both runs.
 
 ---
 
@@ -151,21 +161,22 @@ In Run 0, M3 stays sterile too — it's your floor in both runs.
 
 | Item | Qty | Note |
 |---|---|---|
-| Chi.Bio reactor vials + caps | 7 | **20 mL working volume** (see the venting callout above) |
-| **0.22 µm syringe filters — vents** | **7** | **One per vial. Not optional: no pumps means the lid is the only gas exchange.** |
-| Magnetic stir bars | 7 | Standard, one per vial |
-| Glycerol stocks | 4 | MG1655 WT, TB204 (sfGFP), TB201 (mYFP), TB205 (mCherry) |
-| Agar plates | 4 | For streaking; LB is fine for plates (cells get washed) |
-| Culture tubes for overnights | 4 | 50 mL tube or 25 mL flask, 5 mL culture each |
+| Chi.Bio reactor vials + caps | 5 | **20 mL working volume** (see the venting callout above) |
+| **0.22 µm syringe filters — vents** | **5** | **One per vial. Not optional: no pumps means the lid is the only gas exchange.** |
+| Magnetic stir bars | 5 | Standard, one per vial |
+| Glycerol stocks | 3 | MG1655 WT, TB204 (sfGFP), TB205 (mCherry) — TB201/mYFP is not in this run |
+| Agar plates | 3 | For streaking; LB is fine for plates (cells get washed) |
+| Culture tubes for overnights | 3 | 50 mL tube or 25 mL flask, 5 mL culture each |
 | M9 + 0.2% glucose | **500 mL** | One batch, one bottle — see §3 |
 | 0.22 µm syringe filters | 2–3 | Additionally, for filter-sterilizing glucose and Mg/Ca stocks |
-| Microcentrifuge tubes | ~6 | Washing the inocula |
+| Microcentrifuge tubes | ~4 | Washing the inocula |
 | Cuvettes | ~10 | Benchtop OD checks |
 | 70% ethanol | — | Surface/lid sterilization |
 
-**Media volume budget:** 7 reactors × 20 mL = 140 mL, overnights 4 × 5 mL = 20 mL, washing
-~30 mL, benchtop dilutions and spillage ~50 mL. That's ~235 mL — **make 500 mL** so you are never
-tempted to top up from a second batch. One batch, one bottle, for every reactor including the
+**Media volume budget:** 5 reactors × 20 mL = 100 mL, overnights 3 × 5 mL = 15 mL, washing
+~20 mL, benchtop dilutions and spillage ~50 mL. That's ~185 mL — **still make 500 mL** so you are
+never tempted to top up from a second batch, and so a repeat or the follow-up mYFP run can use
+the same bottle. One batch, one bottle, for every reactor including the
 sterile blank.
 
 ---
@@ -198,8 +209,8 @@ identical across all reactors.
 
 ## 4. Day −2 — plates
 
-Streak all **four** stocks onto separate plates — MG1655 WT, TB204 (sfGFP), TB201 (mYFP),
-TB205 (mCherry). 37 °C overnight, then 4 °C until use.
+Streak all **three** stocks onto separate plates — MG1655 WT, TB204 (sfGFP), TB205 (mCherry).
+TB201 (mYFP) is not in this run — see §1. 37 °C overnight, then 4 °C until use.
 
 ## 5. Day −1 — overnights, media, hardware
 
@@ -207,10 +218,10 @@ TB205 (mCherry). 37 °C overnight, then 4 °C until use.
 1. Pick a **single colony** per strain into **5 mL M9 + 0.2% glucose**. 37 °C, shaking, ~16 h.
    Use M9, **not LB** — LB is strongly autofluorescent and the carryover contaminates the exact
    background you're characterizing, and M9-adapted cells skip the transfer lag.
-   *One flask per strain* — where a strain occupies two reactors (WT and TB205), split that
-   single flask between them, so "replicate" measures the instrument rather than your pipetting.
+   *One flask per strain* — WT occupies two reactors (M0, M4), so split that single flask
+   between them, so "replicate" measures the instrument rather than your pipetting.
 2. Make the 500 mL of media (§3). Leave at room temperature or 4 °C.
-3. Clean and autoclave the 7 vials + stir bars. Check your lid material first — if the caps
+3. Clean and autoclave the 5 vials + stir bars. Check your lid material first — if the caps
    aren't autoclavable, 70% ethanol and air-dry in the hood instead.
 
 **Also on Day −1: cable the reactors and restart the server** (§6). Do not leave this for the
@@ -218,7 +229,7 @@ morning; it's the step most likely to surprise you.
 
 ---
 
-## 6. Cabling M2–M6 — the step that will silently corrupt your data if skipped
+## 6. Cabling M2–M4 — the step that will silently corrupt your data if skipped
 
 **After physically connecting the new reactors you must restart the server.** `/scanDevices/all`
 sets the `present` flag but **does not call `initialise()`**, and `initialise()` is where the
@@ -234,7 +245,7 @@ never get driven at all. You'd get a partly-empty EEM that is not comparable to 
 `LEDI 550` is precisely the autofluorescence ridge you are trying to characterize.
 
 ```bash
-# 1. Power down, cable M2-M6 physically.
+# 1. Power down, cable M2-M4 physically.
 # 2. Restart the server so initialiseAll() runs initialise() on every reactor:
 ssh ChiBio 'cd /root/chibio && ./cb-stop.sh stop 5000'     # cb-stop.sh ONLY — never kill/pkill
 ssh ChiBio 'cd /root/chibio && ./cb.sh'
@@ -243,14 +254,14 @@ sleep 30
 # 3. Presence scan, then VERIFY. Never measure a reactor that isn't confirmed present:
 ssh ChiBio 'curl -s -X POST http://192.168.7.2:5000/scanDevices/all'; sleep 15
 
-# 4. Confirm all seven are present AND all report LED version 2:
-for M in M0 M1 M2 M3 M4 M5 M6; do
+# 4. Confirm all five are present AND all report LED version 2:
+for M in M0 M1 M2 M3 M4; do
   ssh ChiBio "curl -s -X POST http://192.168.7.2:5000/changeDevice/$M >/dev/null; \
     curl -s http://192.168.7.2:5000/getSysdata/" | python3 -c "
 import sys,json; d=json.load(sys.stdin)
 print('$M', 'present=', d['presentDevices']['$M'], 'LED=', d['Version']['LED'])"
 done
-# Expect: present=1 and LED=2 on all seven. Anything else -> stop and fix before proceeding.
+# Expect: present=1 and LED=2 on all five. Anything else -> stop and fix before proceeding.
 ```
 
 Measuring a reactor that is absent drives `I2CCom` into `os._exit(4)` and trips the hardware
@@ -264,14 +275,14 @@ Clock times assume an 08:00 start; **trigger the ladder scans off measured OD, n
 
 | Time | Step |
 |---|---|
-| 08:00 | Fill all 7 reactors with **19 mL** media. Fit the **0.22 µm vent filters**. Thermostat 37 °C ON, stir ON, on **all seven** (M3 included — its optics must match). |
+| 08:00 | Fill all 5 reactors with **19 mL** media. Fit the **0.22 µm vent filters**. Thermostat 37 °C ON, stir ON, on **all five** (M2 included — its optics must match). |
 | 08:45 | Temperature equilibrated. **Blank every reactor** (§7.1). |
-| 09:00 | **Sterile EEM scan, all 7** (§7.3, ~10 min). This is your OD-0 ladder point and is unrecoverable once you inoculate. |
+| 09:00 | **Sterile EEM scan, all 5** (§7.3, ~7 min). This is your OD-0 ladder point and is unrecoverable once you inoculate. |
 | 09:15 | Wash and normalize inocula (§7.2). Set FP3 config (§7.4). |
-| 09:30 | **Inoculate M0, M1, M2, M4, M5, M6** with 1 mL each → 20 mL at OD ≈ 0.02. **M3 gets nothing.** Start the experiment on all 7 for CSV logging. |
-| ~13:00 | **L1** — first reactor reaches OD 0.2 → scan all 7 |
-| ~14:10 | **L2 — OD 0.4, the primary point** → scan all 7 |
-| ~15:00 | **L3** — OD 0.6 → scan all 7. **Stop here.** |
+| 09:30 | **Inoculate M0, M1, M3, M4** with 1 mL each → 20 mL at OD ≈ 0.02. **M2 gets nothing.** Start the experiment on all 5 for CSV logging. |
+| ~13:00 | **L1** — first reactor reaches OD 0.2 → scan all 5 |
+| ~14:10 | **L2 — OD 0.4, the primary point** → scan all 5 |
+| ~15:00 | **L3** — OD 0.6 → scan all 5. **Stop here.** |
 | ~15:30 | Stop experiment, archive everything (§8). |
 
 **Trigger every scan off measured OD, not the clock.** The clock column assumes μ ≈ 0.65/h, but
@@ -308,9 +319,9 @@ ssh ChiBio 'curl -s -X POST http://192.168.7.2:5000/CalibrateOD/OD0/M0/<mean_raw
 ### 7.2 Inocula
 
 Pellet each overnight, **wash once in fresh M9**, resuspend (removes spent-media fluorophores).
-Normalize all four to the **same OD** on the benchtop spectrophotometer, then put 1 mL into
+Normalize all three to the **same OD** on the benchtop spectrophotometer, then put 1 mL into
 19 mL — from an OD ~0.45 washed stock that gives OD ≈ 0.022 in the 20 mL reactor. Split the WT
-and TB205 flasks across their two slots each.
+flask across its two slots (M0 and M4) so the replicate is a true replicate.
 
 ### 7.3 Scan — capture the EEM, not the CSV
 
@@ -320,7 +331,7 @@ device**, hence the `changeDevice` before each grab.
 
 ```bash
 # Record each reactor's OD immediately before its own scan; name the file with the ACTUAL OD.
-for M in M0 M1 M2 M3 M4 M5 M6; do          # numerical order = correctly interleaved
+for M in M0 M1 M2 M3 M4; do          # numerical order = correctly interleaved
   ssh ChiBio "curl -s -X POST http://192.168.7.2:5000/FluorescenceScan/$M/full"
   sleep 120    # ~1-1.5 min/reactor; watch the UI terminal for completion rather than trusting this
   ssh ChiBio "curl -s -X POST http://192.168.7.2:5000/changeDevice/$M >/dev/null"
@@ -328,15 +339,17 @@ for M in M0 M1 M2 M3 M4 M5 M6; do          # numerical order = correctly interle
 done
 ```
 
-Scans are strictly serial — one I2C bus, one global lock — so a ladder point is ~10 min for
-seven reactors, during which cultures grow ~11%. That's why you record per-reactor OD and
+Scans are strictly serial — one I2C bus, one global lock — so a ladder point is ~7 min for
+five reactors, during which cultures grow ~8%. That's why you record per-reactor OD and
 subtract against the nearest-in-time control.
 
 ### 7.4 FP logging channel
 
 You have three FP slots, so use all three — one per fluorophore — and set them **identically on
-all seven reactors**, controls and sterile blank included. Every reactor then logs all three
-channels, and each FP arm's channel has a directly comparable control channel. Each slot captures
+all five reactors**, controls and sterile blank included. Every reactor then logs all three
+channels, and each FP arm's channel has a directly comparable control channel. **Keep FP2**
+even though mYFP isn't in this run: it costs nothing, gives a third spectral point on every
+reactor, and means the follow-up mYFP run uses a configuration already validated here. Each slot captures
 **two** emission bands (`Emit1`/`Emit2`), which is enough to cover both candidate readouts per FP.
 
 | Slot | Excite | Emit1 / Emit2 | For |
@@ -346,7 +359,7 @@ channels, and each FP arm's channel has a directly comparable control channel. E
 | **FP3** | `LEDH` 600 | `nm620` / `nm670` | mCherry |
 
 ```bash
-for M in M0 M1 M2 M3 M4 M5 M6; do
+for M in M0 M1 M2 M3 M4; do
   ssh ChiBio "curl -s -X POST http://192.168.7.2:5000/changeDevice/$M >/dev/null
     curl -s -X POST http://192.168.7.2:5000/SetFPMeasurement/FP1/LEDB/CLEAR/nm510/nm550/x10
     curl -s -X POST http://192.168.7.2:5000/SetFPMeasurement/FP2/LEDD/CLEAR/nm550/nm583/x10
@@ -391,10 +404,10 @@ density-match, and it is not reliably recoverable afterwards.
 
 - **`cb-stop.sh` only.** Never `kill`, `pkill`, or kill a PID from `ss -ltnp` — that wedged the
   board on 2026-07-17 and needed a physical power-cycle.
-- **Verify `present=1` and `LED=2` on all seven before any measurement** (§6).
+- **Verify `present=1` and `LED=2` on all five before any measurement** (§6).
 - **Blank after every server restart** — it's RAM-only.
 - **The sterile scan must precede inoculation.** Not recoverable afterwards.
-- **M3 never gets cells.** Label it physically so a tired hand at 09:30 doesn't inoculate it.
+- **M2 never gets cells.** Label it physically so a tired hand at 09:30 doesn't inoculate it.
 - **Vent every vial through a 0.22 µm filter** — a sealed vial suppresses FP maturation *and*
-  raises autofluorescence. Same vial, same volume, same vent on all seven.
+  raises autofluorescence. Same vial, same volume, same vent on all five.
 - **Stop at OD 0.6**, don't run to plateau. OD 0.4 is the primary point.

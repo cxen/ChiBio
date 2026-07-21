@@ -1,12 +1,13 @@
 # Prep plan — matched non-fluorescent control experiment
 
-Prepared 2026-07-20 (revised after confirming 8 reactor slots are available, only 2 cabled).
+Prepared 2026-07-20; revised 2026-07-21 after correcting the hardware count to **5 reactors**
+(the earlier 7-reactor design assumed 8 slots — see §1 for what got cut).
 Bench-side prep + protocol for the experiment that unblocks the fluorescence-quantification
 track (`TODO.md` P5/P7 fluorescence items).
 
-**Hardware state:** the rig supports M0–M7. As of 2026-07-20 only **M0 and M1 are cabled**
-(`presentDevices` M2–M7 = 0) — the rest are available but need connecting. This plan assumes you
-connect **7** (see §1). After cabling, you must POST `/scanDevices/all` and confirm
+**Hardware state:** the software addresses M0–M7, but you have **five physical reactors** —
+M0–M4 is the whole rig. As of 2026-07-20 only **M0 and M1 are cabled** (`presentDevices` M2–M7
+= 0); cable the remaining three. After cabling, you must POST `/scanDevices/all` and confirm
 `presentDevices` before measuring: the top-level `present` flag defaults to 1 for un-scanned
 devices, and measuring an absent reactor drives `I2CCom` into `os._exit(4)` and trips the
 watchdog on the *running* reactors.
@@ -17,15 +18,16 @@ LED hardware is **V2** (`Version.LED == 2`), excitation set:
 **Two findings that shaped this plan:**
 
 1. **There is no per-device OD calibration to worry about.** `LASERa`/`LASERb` come from a single
-   shared template (`chibio_state.py:42`) identical for all eight reactors, and the per-`M0`–`M3`
+   shared template (`chibio_state.py:42`) identical for every reactor, and the per-`M0`–`M3`
    `CF` constants in `chibio_measurements.py` are **dead code** — assigned, then never used (the
-   line consuming them is commented out; the live formula is `raw/OD0.target`). So M4–M7 are no
+   line consuming them is commented out; the live formula is `raw/OD0.target`). So M4 is no
    worse calibrated than M0–M3. The only per-reactor OD quantity is the blank, `OD0.target`,
-   which you set yourself. Connecting more reactors costs nothing in OD accuracy.
+   which you set yourself. Connecting M2–M4 costs nothing in OD accuracy.
 2. **Scans are strictly serial and cost you density matching.** All reactors share one I2C bus
    behind a single global lock, so scans cannot run in parallel — a ladder point takes
-   (reactors × ~1.5 min). That drift is designed around in §6, and it is the reason the reactor
-   count is 7 and not 8.
+   (reactors × ~1.5 min). That drift is designed around in §6. The silver lining of only having
+   five reactors: a ladder point is ~7 min instead of ~10, so the within-ladder growth drift
+   drops from ~11% to ~8%.
 
 ---
 
@@ -40,14 +42,13 @@ culture from one flask. This measures the reactor-to-reactor EEM offset and, mor
 σ_device across the whole set at once. That is exactly the "per-device fluorescence calibration
 constants" TODO item, and without it you cannot tell a real FP signal from a device difference.
 
-**Run 1 — the experiment (~1 day), 7 reactors:**
+**Run 1 — the experiment (~1 day), all 5 reactors:**
 
 | Slots | Contents | Role |
 |---|---|---|
 | 2 | MG1655 WT (no FP) | Matched non-fluorescent control, **duplicated** |
-| 2 | **TB205** `attP21::PR-mCherry` | FP arm — best-served on V2, method anchor |
-| 1 | **TB204** `attP21::PR-sfGFP` | FP arm — worst case on V2 |
-| 1 | **TB201** `attP21::PR-mYFP` | FP arm — intermediate |
+| 1 | **TB205** `attP21::PR-mCherry` | FP arm — best-served on V2, method anchor |
+| 1 | **TB204** `attP21::PR-sfGFP` | FP arm — worst case on V2, the reason this track exists |
 | 1 | **Sterile media, never inoculated** | Instrument/tube floor, tracked all day |
 
 All three FP strains are isogenic (same MG1655 background, same `attP21` locus, same `PR`
@@ -55,16 +56,28 @@ promoter, single chromosomal copy, no resistance marker), so plain MG1655 is a v
 control with no empty-vector needed, and differences between arms reflect fluorophore and
 instrument rather than expression level.
 
-**Where the replicates go.** The control is the subtrahend in every subtraction, so its noise
-propagates into every result — it gets n=2. mCherry takes the other n=2 as the method anchor:
-it's the arm most likely to give a clean positive, so "the subtracted mCherry cell is above
-background" becomes a claim with an error bar rather than a single number, and if subtraction
-fails there it fails everywhere. sfGFP and mYFP run at n=1 to span the spectrum. The
-uninoculated sterile reactor is the cheapest slot in the experiment: it separates instrument
+**Where the slots go, and what five costs you.** Three slots are non-negotiable. The control is
+the subtrahend in every subtraction, so its noise propagates into every result — it gets n=2.
+The uninoculated sterile reactor is the cheapest slot in the experiment: it separates instrument
 drift over the day from biology and supplies the intercept term at *every* ladder point, not
 just t=0.
 
-Leave the 8th slot unconnected as a spare and to hold the scan window down.
+That leaves **two slots for three fluorophores**, so you cannot have both an FP error bar and
+sfGFP coverage. **sfGFP wins.** The fluorescence-quantification track exists because GFP-in-cells
+sits at or below the detection floor on this hardware; a run that validates the method on
+mCherry alone doesn't answer the question that prompted it. mCherry keeps the other slot as the
+positive anchor — if subtraction fails there it fails everywhere.
+
+**Cut relative to the 7-slot design:** the mCherry replicate (both FP arms are now n=1 — the
+error bar lives on the control side and on σ_device from Run 0) and **TB201/mYFP entirely**.
+mYFP is the intermediate case; once the method is validated on mCherry and characterised on
+sfGFP, mYFP is a repeat of a known method rather than a new question. Run it as a follow-up on
+the same rig, same media recipe, so it's comparable.
+
+The alternative, if you'd rather have the FP error bar than sfGFP coverage, is TB205 ×2 and no
+sfGFP. Do **not** buy mYFP back by dropping the WT replicate: the control's within-run variance
+is load-bearing for every number in the analysis, and Run 0 gives you the device-offset map but
+not that.
 
 **All three fluorophores run together**, which the isogenic panel makes meaningful — matched
 promoter, locus, and copy number mean the arms differ by fluorophore and instrument response,
@@ -95,11 +108,11 @@ test: a negative there bounds the hardware rather than the method.
 with the archived weekend data, and its ~OD 1–1.5 ceiling keeps you clear of the FP
 Clear-channel saturation regime.
 
-- **One batch, one bottle, one day, for all seven reactors** — including the sterile blank
+- **One batch, one bottle, one day, for all five reactors** — including the sterile blank
   reactor, which must be the same media. Do not split across preparations. Media background is
   precisely the thing subtraction cannot remove.
 - **20 mL working volume per reactor** (1 mL inoculum into 19 mL) — Chi.Bio's own standard, and
-  the extra headspace matters because these runs are unaerated (below). Seven reactors ≈ 140 mL;
+  the extra headspace matters because these runs are unaerated (below). Five reactors ≈ 100 mL;
   make **500 mL** to cover overnights, washing, blanking, and spillage.
 - Batch mode. No pumps or reservoirs needed for Runs 0–1.
 - **Vials are vented, not sealed** (0.22 µm filter per lid). Without pumps the lid is the only
@@ -152,20 +165,21 @@ the run. The old "wait for higher density and the ratio will improve" idea was d
 give another reason not to push high: reaching 0.8 would take a long time and would do it under
 progressively worse O₂ limitation.
 
-## 6. The scan window — the one real cost of more reactors
+## 6. The scan window
 
 A `full` scan is 6 LEDs × 3 powers = 18 cells, roughly **1–1.5 min per reactor**. The I2C bus is
-serialized by a single global lock, so **seven reactors ≈ 9–10 min per ladder point**, and the
-cultures keep growing throughout: at μ 0.65/h the last reactor scanned is ~11% denser than the
+serialized by a single global lock, so **five reactors ≈ 6–7.5 min per ladder point**, and the
+cultures keep growing throughout: at μ 0.65/h the last reactor scanned is ~8% denser than the
 first. Since background scales with biomass, that drift goes straight into your subtraction if
 you ignore it.
 
 Two mitigations, both cheap:
 
-- **Interleave the scan order so each FP reactor is adjacent to a control**, e.g.
-  `WT-a → mCherry-a → sfGFP → sterile → WT-b → mCherry-b → mYFP` (which is plain M0→M6 order in
-  the runbook's layout). Subtract using the *nearest-in-time* control, not a single global one.
-  That cuts the effective control-to-sample gap to ~1.5 min.
+- **Interleave the scan order so each FP reactor is adjacent to a control**:
+  `WT-a → mCherry → sterile → sfGFP → WT-b`, which is plain M0→M4 order in the runbook's layout.
+  With five slots this is exact — both FP arms sit directly next to a WT, and the sterile blank
+  lands mid-window. Subtract using the *nearest-in-time* control, not a single global one; the
+  effective control-to-sample gap is ~1.5 min.
 - **Record each reactor's actual OD immediately before its own scan** and normalize per-OD
   afterwards. Do not infer density from the clock.
 
@@ -176,7 +190,9 @@ with the turbidostat — at the cost of pumps, reservoirs, and much more media. 
 
 Use **all three FP slots, one per fluorophore**, set identically on every reactor including the
 WT controls and the sterile blank — so every reactor logs all three channels and each FP arm has
-a directly comparable control channel. Each slot takes two emission bands, covering both
+a directly comparable control channel. Keep FP2 (mYFP) configured even though that strain isn't
+in this run: it's free, it gives a third spectral point on every reactor, and the follow-up mYFP
+run then inherits a validated configuration. Each slot takes two emission bands, covering both
 candidate readouts per FP:
 
 | Slot | Excite | Emit1 / Emit2 | For |
@@ -207,7 +223,7 @@ ssh ChiBio 'curl -s -X POST http://192.168.7.2:5000/scanDevices/all'; sleep 15
 ssh ChiBio 'curl -s http://192.168.7.2:5000/getSysdata/ | python3 -c "import sys,json;print(json.load(sys.stdin)[\"presentDevices\"])"'
 
 # At each ladder point, in the interleaved order from §6:
-for M in M0 M2 M4 M6 M1 M3 M5; do
+for M in M0 M1 M2 M3 M4; do   # numerical order is already interleaved
   ssh ChiBio "curl -s -X POST http://192.168.7.2:5000/FluorescenceScan/$M/full"
   sleep 120   # watch the panel/terminal for completion rather than trusting the sleep
   ssh ChiBio "curl -s -X POST http://192.168.7.2:5000/changeDevice/$M"
@@ -220,7 +236,7 @@ and the `_meta.json` / `_events.json` sidecars at the end of each run.
 
 ## 9. Pre-flight reminders
 
-- **Cable the extra reactors, then `/scanDevices/all`, then verify `presentDevices`** before any
+- **Cable M2–M4, then `/scanDevices/all`, then verify `presentDevices`** before any
   measurement. Never skip this — measuring an absent reactor takes the server down and trips the
   hardware cutoff on the running ones.
 - **`OD0.target` is at the 65000 default** (confirmed 2026-07-20) — the stale placeholder, not a
@@ -237,12 +253,15 @@ and the `_meta.json` / `_events.json` sidecars at the end of each run.
    σ_device is small relative to the FP cell magnitudes from §1. If not, cross-reactor
    subtraction is not viable and the design must move to sequential same-reactor controls.
 2. **Run 1, primary:** after subtracting the density-matched WT EEM, the mCherry cell
-   (`ex600→nm670`) emerges clearly above background in **both** TB205 replicates. This is the
-   method anchor — if subtraction fails here it fails everywhere.
+   (`ex600→nm670`) emerges clearly above background in TB205. This is the method anchor — if
+   subtraction fails here it fails everywhere. With one FP arm per fluorophore, the error bar
+   comes from the **WT pair** (σ of the subtrahend) and σ_device from Run 0, not from an FP
+   replicate — so criterion 1 has to hold before criterion 2 means anything.
 3. **Run 1:** subtracted signal vs OD is linear with a near-zero intercept across the ladder.
-4. **Spectral spread:** same test for mYFP (`ex523→nm550`) and sfGFP (`ex457→nm510` or `nm550`).
-   sfGFP is expected to be marginal on V2, which lacks a ~488 nm channel; a negative there is an
-   informative bound on the hardware, not a failure of the protocol.
+4. **Spectral spread:** same test for sfGFP (`ex457→nm510` or `nm550`). sfGFP is expected to be
+   marginal on V2, which lacks a ~488 nm channel; a negative there is an informative bound on
+   the hardware, not a failure of the protocol. mYFP (`ex523→nm550`) is deferred to the
+   follow-up run — the FP2 channel is configured here so that run is directly comparable.
 
 Only if 1–3 hold does it make sense to build matched-control subtraction as a first-class FP mode
 and re-tune `recommend_fp_settings` against subtracted EEMs.
