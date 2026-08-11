@@ -22,7 +22,7 @@ The Chi.Bio operating system: a Flask web app that controls Chi.Bio bioreactors 
 |---|---|---|
 | Real | *(neither flag)* | Real GPIO + I2C, watchdog, `initialiseAll()`. **A bare controller with no reactors dies here**: the mux at `0x74`/bus 2 never ACKs, `I2CCom` gives up and `os._exit(4)`s, gunicorn reports "App failed to load". That is the watchdog working, not a bug. |
 | Import shim | `CHIBIO_MOCK_HW=1` | No-op GPIO, **no** `initialiseAll()`. Only for `import app` in the test suite. Half of `sysData` keeps raw template values (FP `*Record` still `int 0`, FP band/LED/Gain still `0` → **blank GUI dropdowns**, `Version['LED']` stuck at 1 → V1 panel on a V2 board). Never judge UI from this. |
-| Simulation | `CHIBIO_SIM=1` | Fakes the **bus**, then runs the **real** `initialiseAll()` on top. See below. |
+| Simulation | `CHIBIO_SIM=1` | Fakes the **bus**, then runs the **real** `initialiseAll()` on top. Works both on a reactor-less device and on a laptop with no BeagleBone at all. See below. |
 
 **`CHIBIO_SIM=1` (`chibio_sim.py`) — the UI with no reactors attached.** It replaces `smbus2.SMBus` with a fake that answers as the multiplexer, both MCP9808 thermometers, the IR thermometer, the DAC and the two PWM chips, and substitutes `chibio_optics.get_light`/`get_spectrum` (the AS7341 is too intricate to emulate register-by-register). *Everything above that line is the real product code* — the presence scan, LED V1/V2 auto-detection and the FP3 LEDE→LEDH remap that hangs off it, `setPWM`, `measure_od`'s log10/`LASERa`/`LASERb` calibration and dark correction, `measure_fp`'s emit/base ratio and near-saturation guard, `measure_temp`, `Thermostat`, `RegulateOD`, `csvData`, the fluorescence assist. Behind the fake optics is a logistic culture model diluted by whatever Pump1 actually does (so the turbidostat closes the loop) and a first-order heater model driven by the real Heat output.
 
@@ -30,6 +30,8 @@ The Chi.Bio operating system: a Flask web app that controls Chi.Bio bioreactors 
 - `CHIBIO_SIM_REACTORS=M0,M1,M2,M3,M4` (default) — which reactors answer; the rest scan absent through the real failure path.
 - `CHIBIO_SIM_HOURS=12` (default) — hours of synthetic history pre-loaded so charts open with data. Pressing Start *resumes* into it (cycles ≠ 0), and live points continue the same curve.
 - `CHIBIO_SIM_SEED=1` — otherwise deterministic.
+
+Runs anywhere: `CHIBIO_SIM=1 ./cb.sh` on a reactor-less device, or `CHIBIO_SIM=1 python3 -c "import app; app.application.run(port=5000)"` on a laptop (verified serving the full UI on macOS with no BeagleBone).
 
 Every simulated reactor's `DeviceID` is prefixed `SIM-` and its terminal opens with `SIMULATION MODE - no hardware attached`, so no screenshot can be mistaken for real hardware. **This does not replace the device.** It is a fake bus with a plausible culture behind it, not the rig: it cannot tell you what real readings look like, whether an LED is actually fitted, or how the optics behave. The hardware-first rule at the top still stands — sim is for working on the UI when the reactors are unplugged, not for designing against.
 

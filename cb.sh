@@ -13,6 +13,14 @@ _tok="$(dirname "$0")/.chibio_token"
 # chibio_auth.py trusts loopback + the USB-gadget subnets; every other address
 # needs ?token=, so only those lines carry it.
 echo "✨ ChiBio bioreactor OS (gunicorn on 0.0.0.0:5000)"
+
+# Say it before the URLs, not after: the whole point of the simulator is that the UI
+# looks exactly like a real run, so the one place an operator can tell them apart is
+# here and the SIM- device IDs / terminal line in the GUI itself.
+if [ -n "$CHIBIO_SIM" ]; then
+  echo "   🧪 SIMULATION MODE — fake I2C bus, no hardware. Readings are modelled, not measured."
+  echo "      Reactors: ${CHIBIO_SIM_REACTORS:-M0,M1,M2,M3,M4} | LED version: ${CHIBIO_SIM_LED_VERSION:-2} | history: ${CHIBIO_SIM_HOURS:-12}h"
+fi
 for _ip in $(hostname -I 2>/dev/null); do
   case "$_ip" in
     192.168.7.*|192.168.6.*)

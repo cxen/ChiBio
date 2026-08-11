@@ -33,9 +33,16 @@ into the modules below and retired; it remains in git history if ever needed.
   or the OD blank change during a run. A near-saturation guard flags fluorescence
   reads whose CLEAR base rides the ADC ceiling.
 
-> **You cannot run this on a macOS/Linux dev machine.** Importing `app.py` triggers
-> `initialiseAll()`, which talks to GPIO/I2C hardware and spawns the watchdog.
-> Edit on your machine; run on the device.
+- **Simulation mode.** `CHIBIO_SIM=1` fakes the I2C bus and runs the real
+  initialisation and control code on top of it, so the whole UI — charts, controls,
+  running experiments — works with no reactors attached, and on an ordinary laptop.
+  See [Running without hardware](#running-without-hardware-chibio_sim1).
+
+> **By default you cannot run this on a macOS/Linux dev machine.** Importing `app.py`
+> triggers `initialiseAll()`, which talks to GPIO/I2C hardware and spawns the
+> watchdog. Edit on your machine; run on the device — or set `CHIBIO_SIM=1` to run
+> the interface anywhere (see below). The device remains the reference you design
+> against; the simulator is not a substitute for it.
 
 ## Layout
 
@@ -44,7 +51,10 @@ into the modules below and retired; it remains in git history if ever needed.
 - `chibio_hardware.py` — `I2CCom`, the single chokepoint for all I2C traffic; PWM; watchdog.
 - `chibio_optics.py` / `chibio_measurements.py` — AS7341 spectrometer reads; OD/FP/temperature.
 - `chibio_experiment.py` — the long-running control threads (main loop, thermostat, pumps, turbidostat, zigzag).
-- `chibio_control_helpers.py` — user-editable optogenetic programs, CSV logging, downsampling.
+- `chibio_control_helpers.py` — user-editable optogenetic programs, CSV logging, metadata/events sidecars, downsampling.
+- `chibio_fluorescence.py` — the fluorescence configuration assist (excitation scan → recommended FP settings).
+- `chibio_auth.py` — token/cookie auth and the trusted-subnet rules.
+- `chibio_sim.py` — the `CHIBIO_SIM=1` simulator: a fake I2C bus plus substituted optics, with a culture and thermal model behind them.
 - `templates/` + `static/` — the browser UI (polls `/getSysdata/` over AJAX).
 
 ## Install (on the BeagleBone)
@@ -72,7 +82,14 @@ gunicorn -b 0.0.0.0:5000 app:application
 ```
 
 Binding `0.0.0.0` serves the UI on **both** the USB point-to-point link and the LAN.
-Uncomment the `screen` line in `cb.sh` to run detached.
+To run detached, either uncomment the `screen` line in `cb.sh`, or start it under
+`tmux` (installed on the device) and leave `cb.sh` in the foreground:
+
+```
+tmux new-session -d -s chibio "bash -lc './cb.sh 2>&1 | tee /tmp/chibio.log'"
+tmux attach -t chibio          # watch it
+./cb-stop.sh stop 5000         # stop it — never hand-roll ss|kill
+```
 
 ## Access / auth
 
@@ -95,13 +112,17 @@ board doesn't fetch from GitHub. Deploy by `rsync` from your machine:
 
 ```
 rsync -az --delete \
-  --exclude='.git' --exclude='.DS_Store' --exclude='.chibio_token' \
-  --exclude='.claude' --exclude='selftest-*.json' \
+  --exclude='.DS_Store' --exclude='.chibio_token' --exclude='.claude' \
+  --exclude='selftest-*.json' --exclude='.c9' --exclude='__pycache__' \
   -e ssh ./ <device>:/root/chibio/
 ```
 
-Always exclude `.chibio_token` (or `--delete` wipes the device's secret) and the
-`selftest-*.json` artifacts.
+Always exclude `.chibio_token` (or `--delete` wipes the device's secret), the
+`selftest-*.json` artifacts, and the device's untracked `.c9/` (Cloud9 IDE dir).
+`.git` is deliberately **not** excluded: syncing it keeps the run dir's git ref
+pointing at exactly what is deployed, which is where the metadata sidecar reads its
+commit hash from. Deploy to `/root/chibio-staging` first, verify there, then promote
+to `/root/chibio`.
 
 `device_selftest.py <label>` exercises every I2C code path against a running server
 on the device and dumps a per-device snapshot to `selftest-<label>.json`, so a
@@ -110,48 +131,58 @@ changes don't silently regress readings. It safely discovers connected reactors
 first (via `/scanDevices/all` + `presentDevices`) rather than measuring absent
 devices, which would trip the watchdog kill.
 
-There is no linter and no build step. A small suite of `test_*.py` files runs
-**off-device** under `CHIBIO_MOCK_HW=1` (an import shim that swaps in a no-op GPIO
-and skips the watchdog/init), covering the pure logic that doesn't need hardware —
-CSV schema, metadata/events sidecars, read-validity, auto-ranging, replicate
-aggregation, the FP saturation guard, and the fluorescence analysis:
+There is no linter and no build step. A suite of ten `test_*.py` files runs
+**off-device**, covering the logic that doesn't need hardware — CSV schema,
+metadata/events sidecars, read-validity, auto-ranging, replicate aggregation, the FP
+saturation guard, the fluorescence analysis, and the simulator itself:
 
 ```
 python3 -m venv v && v/bin/pip install flask numpy smbus2 simplejson
 CHIBIO_MOCK_HW=1 v/bin/python test_fluorescence.py   # (and the other test_*.py)
 ```
 
+`test_sim.py` reaches furthest: because `CHIBIO_SIM` fakes only the bus, it exercises
+the real initialisation, presence-scan and measurement code end-to-end without a
+board (it sets its own env vars, so the invocation above still works).
+
 Hardware paths still need the device (`device_selftest.py`, above). The device
-is otherwise the reference you design against — the mock is only an import shim,
-not a development target.
+is otherwise the reference you design against — `CHIBIO_MOCK_HW` is only an import
+shim, not a development target.
 
-### Running with no reactors attached (`CHIBIO_SIM=1`)
+### Running without hardware (`CHIBIO_SIM=1`)
 
-A bare controller cannot start the server normally: with nothing on the bus the
-I2C multiplexer never answers, and the watchdog correctly kills the process
-(`App failed to load`, exit code 4). `CHIBIO_SIM=1` makes the whole UI usable
-anyway:
+Two situations where the server won't otherwise start: a controller with **no
+reactors plugged in** (nothing on the bus answers, so the I2C multiplexer never
+ACKs, the watchdog kills the process, and gunicorn reports `App failed to load`
+with exit code 4 — that is the watchdog working, not a bug), and an ordinary
+**laptop** with no BeagleBone at all. `CHIBIO_SIM=1` handles both:
 
 ```
-CHIBIO_SIM=1 ./cb.sh
+CHIBIO_SIM=1 ./cb.sh                                  # on the device
+CHIBIO_SIM=1 python3 -c "import app; app.application.run(port=5000)"   # on a laptop
 ```
 
-It fakes the *bus* — a stand-in `smbus2.SMBus` for the multiplexer, thermometers,
-DAC and PWM chips, plus substituted AS7341 optics — and then runs the **real**
-`initialiseAll()` on top, so the presence scan, LED V1/V2 detection, OD
-calibration, FP ratio and saturation guard, thermostat and turbidostat are all
-the actual product code. Behind the fake optics sits a logistic culture model
-(diluted by whatever the input pump is doing) and a first-order heater model, so
-experiments genuinely run and the control loops close.
+It fakes the *bus* — a stand-in `smbus2.SMBus` for the multiplexer, both MCP9808
+thermometers, the IR thermometer, the DAC and the two PWM chips, plus substituted
+AS7341 optics — and then runs the **real** `initialiseAll()` on top. So the presence
+scan, LED V1/V2 detection (and the FP3 excitation remap that follows from it), OD
+calibration and dark correction, the FP ratio and its near-saturation guard, the
+thermostat, the turbidostat, CSV logging and the fluorescence assist are all the
+actual product code. Behind the fake optics sits a logistic culture model — diluted
+by whatever the input pump is really doing — and a first-order heater model driven by
+the real heat output, so experiments genuinely run and the control loops close.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `CHIBIO_SIM_LED_VERSION` | `2` | LED board version to present (V1 and V2 expose different excitation panels) |
-| `CHIBIO_SIM_REACTORS` | `M0,M1,M2,M3,M4` | Which reactors answer; the rest scan absent |
-| `CHIBIO_SIM_HOURS` | `12` | Hours of synthetic history pre-loaded so charts open with data |
+| `CHIBIO_SIM_REACTORS` | `M0,M1,M2,M3,M4` | Which reactors answer; the rest scan absent through the real failure path |
+| `CHIBIO_SIM_HOURS` | `12` | Hours of synthetic history pre-loaded so charts open with data; pressing Start resumes into it |
 | `CHIBIO_SIM_SEED` | `1` | Otherwise deterministic |
 
-Simulated reactors carry a `SIM-` device ID and a `SIMULATION MODE` terminal
-line, so a screenshot can't be mistaken for real hardware. This is for working
-on the interface while the rig is unplugged — it is not a substitute for the
-device, and tells you nothing about what real readings look like.
+Simulated reactors carry a `SIM-` device ID and a `SIMULATION MODE - no hardware
+attached` terminal line, so a screenshot can't be mistaken for real hardware.
+
+**This is not a substitute for the device.** It is a fake bus with a plausible
+culture behind it: it cannot tell you what real readings look like, which LEDs are
+actually fitted, or how the optics behave. Use it to work on the interface when the
+rig is unavailable — not to design against.
