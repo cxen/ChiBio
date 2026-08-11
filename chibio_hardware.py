@@ -5,11 +5,14 @@ from datetime import datetime
 from threading import Thread
 
 # Adafruit_BBIO is a kernel-matched C extension that only builds/imports on the
-# BeagleBone. Setting CHIBIO_MOCK_HW swaps in a no-op GPIO so `import app` works
-# on a dev laptop for smoke tests. Gate on the env var, NOT on ImportError: the
-# device must fail loudly if the real GPIO (and its watchdog) is missing, never
-# silently run on a mock. ponytail: no-op mock, not a full simulator — enough to import.
-if os.environ.get('CHIBIO_MOCK_HW'):
+# BeagleBone. Setting CHIBIO_MOCK_HW (or CHIBIO_SIM, which implies it) swaps in a
+# no-op GPIO so `import app` works on a dev laptop for smoke tests. Gate on the env
+# var, NOT on ImportError: the device must fail loudly if the real GPIO (and its
+# watchdog) is missing, never silently run on a mock. This is a no-op mock, not a
+# simulator — CHIBIO_SIM and chibio_sim.py are the simulator.
+from chibio_sim import MOCK_HW  # stdlib-only at import time, so no cycle
+
+if MOCK_HW:
     class _MockGPIO:
         OUT = IN = 0
         HIGH = 1

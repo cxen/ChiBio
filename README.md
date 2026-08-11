@@ -124,3 +124,34 @@ CHIBIO_MOCK_HW=1 v/bin/python test_fluorescence.py   # (and the other test_*.py)
 Hardware paths still need the device (`device_selftest.py`, above). The device
 is otherwise the reference you design against — the mock is only an import shim,
 not a development target.
+
+### Running with no reactors attached (`CHIBIO_SIM=1`)
+
+A bare controller cannot start the server normally: with nothing on the bus the
+I2C multiplexer never answers, and the watchdog correctly kills the process
+(`App failed to load`, exit code 4). `CHIBIO_SIM=1` makes the whole UI usable
+anyway:
+
+```
+CHIBIO_SIM=1 ./cb.sh
+```
+
+It fakes the *bus* — a stand-in `smbus2.SMBus` for the multiplexer, thermometers,
+DAC and PWM chips, plus substituted AS7341 optics — and then runs the **real**
+`initialiseAll()` on top, so the presence scan, LED V1/V2 detection, OD
+calibration, FP ratio and saturation guard, thermostat and turbidostat are all
+the actual product code. Behind the fake optics sits a logistic culture model
+(diluted by whatever the input pump is doing) and a first-order heater model, so
+experiments genuinely run and the control loops close.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CHIBIO_SIM_LED_VERSION` | `2` | LED board version to present (V1 and V2 expose different excitation panels) |
+| `CHIBIO_SIM_REACTORS` | `M0,M1,M2,M3,M4` | Which reactors answer; the rest scan absent |
+| `CHIBIO_SIM_HOURS` | `12` | Hours of synthetic history pre-loaded so charts open with data |
+| `CHIBIO_SIM_SEED` | `1` | Otherwise deterministic |
+
+Simulated reactors carry a `SIM-` device ID and a `SIMULATION MODE` terminal
+line, so a screenshot can't be mistaken for real hardware. This is for working
+on the interface while the rig is unplugged — it is not a substitute for the
+device, and tells you nothing about what real readings look like.

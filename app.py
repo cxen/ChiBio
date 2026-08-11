@@ -12,6 +12,7 @@ from chibio_experiment import PumpModulation, RegulateOD, Thermostat, Zigzag, ru
 from chibio_hardware import I2CCom, get_i2c_device, setPWM, setup_watchdog
 from chibio_optics import get_light, get_spectrum
 from chibio_state import sysData, sysDevices, sysItems
+import chibio_sim
 from threading import Thread
 import threading
 from datetime import datetime, date
@@ -34,7 +35,10 @@ init_auth(application, logger)
 # CHIBIO_MOCK_HW lets `import app` succeed on a dev laptop (no GPIO/I2C) for smoke
 # tests, by skipping the two hardware entry points: the watchdog and initialiseAll.
 # See the mock GPIO in chibio_hardware.py. Unset (the device default) = real hardware.
-MOCK_HW = bool(os.environ.get('CHIBIO_MOCK_HW'))
+# CHIBIO_SIM implies MOCK_HW but goes further: it fakes the bus and then runs the
+# real initialiseAll() on top, so the UI works with no reactors attached. Both flags
+# live in chibio_sim so app and chibio_hardware can't disagree about them.
+MOCK_HW = chibio_sim.MOCK_HW
 
 if not MOCK_HW:
     setup_watchdog()
@@ -943,12 +947,21 @@ def ExperimentStartStop(M,value):
     return ('', 204)
 
 
-if __name__ == '__main__':
-    if not MOCK_HW:
+def _boot():
+    # Three ways in. CHIBIO_SIM: patch the bus + optics, then run the REAL
+    # initialiseAll() on top of the fake hardware (see chibio_sim). CHIBIO_MOCK_HW
+    # alone: skip initialisation entirely, it is only an import shim for the tests.
+    # Neither (the device default): real hardware.
+    if chibio_sim.SIM:
+        chibio_sim.install()
+    elif not MOCK_HW:
         initialiseAll()
+
+
+if __name__ == '__main__':
+    _boot()
     application.run(debug=True,threaded=True,host='0.0.0.0',port=5000)
 else:
-    if not MOCK_HW:
-        initialiseAll()
+    _boot()
 
 print(str(datetime.now()) + ' Start Up Complete')
