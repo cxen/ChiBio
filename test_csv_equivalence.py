@@ -100,7 +100,13 @@ assert rows[2] == rows[1], "second appended row should match the first"
 added = [c for c in rows[0] if c not in exp_fieldnames]
 assert set(added) == {'od_transmission_raw', 'od_transmission_dark', 'od_transmission_corrected', 'od_spread',
                       'FP1_gain_used', 'FP2_gain_used', 'FP3_gain_used',
-                      'FP1_spread', 'FP2_spread', 'FP3_spread'}, \
+                      'FP1_spread', 'FP2_spread', 'FP3_spread',
+                      # raw emission counts (before the Clear division) and achieved pump on-times
+                      'FP1_emit1_raw', 'FP1_emit2_raw',
+                      'FP2_emit1_raw', 'FP2_emit2_raw',
+                      'FP3_emit1_raw', 'FP3_emit2_raw',
+                      'pump_1_ontime_ms', 'pump_2_ontime_ms',
+                      'pump_3_ontime_ms', 'pump_4_ontime_ms'}, \
     "unexpected column changes: %s" % added
-print("PASS: all %d original columns unchanged; added %d new columns (dark-transmission + FP gain)" % (
+print("PASS: all %d original columns unchanged; added %d new columns (dark-transmission, FP gain/spread, raw FP emissions, pump on-times)" % (
     len(exp_fieldnames), len(added)))

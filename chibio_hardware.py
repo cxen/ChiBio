@@ -1,6 +1,10 @@
 import os
+import sys
 import time
 import logging
+import threading
+import traceback
+from contextlib import contextmanager
 from datetime import datetime
 from threading import Thread
 
@@ -40,6 +44,88 @@ def _get_bus(busnum):
         bus = smbus2.SMBus(busnum)
         _i2c_buses[busnum] = bus
     return bus
+
+
+# A single I2CCom is bounded (~1.5 s worst case, then os._exit), so any wait past this is
+# queueing behind other threads, not one slow transaction. threading.Lock is not fair, so a
+# waiter can be starved under sustained contention -- the leading remaining hypothesis for the
+# 2026-08-12 09:30:52 worker timeout, whose two documented suspects were both refuted (see
+# TODO.md). Logging the wait is what makes the next occurrence diagnosable instead of a mystery.
+_SLOW_LOCK_SECONDS = 10.0
+_STALL_REPORT_SECONDS = 30.0
+
+
+@contextmanager
+def measurement_sequence(M):
+    """Hold a reactor's measurement mutex across a whole drive-output -> read -> turn-off
+    sequence.
+
+    `lock` (in I2CCom) serializes single I2C transactions, which is not enough: two threads
+    working the SAME reactor interleave at the sequence level, so a FluorescenceScan can
+    switch the laser off between an experiment cycle's switch-on and its read. The read then
+    succeeds against a dark sample -- raw=0, od_spread ~1.1, and `valid` stays 1 because
+    nothing failed. That is the unflagged corrupt row in INVARIANTS 5, and the same collision
+    killed M3's experiment thread on 2026-08-11.
+
+    The guard is an RLock, so nesting (a cycle's measure_od inside the cycle's own guard) is
+    safe without any per-thread bookkeeping, and it stays correct if a thread ever needs to
+    hold two reactors at once. Absent from `sysDevices` only in the mock-import path, where
+    this degrades to a no-op.
+    """
+    M = str(M)
+    guard = sysDevices.get(M, {}).get('measureLock')
+    if guard is None:
+        yield
+        return
+    waited = time.monotonic()
+    guard.acquire()
+    waited = time.monotonic() - waited
+    if waited > _SLOW_LOCK_SECONDS:
+        logger.warning('measurement mutex on %s waited %.1fs (contended)', M, waited)
+    try:
+        yield
+    finally:
+        guard.release()
+
+
+def _stall_watchdog():
+    """Report, with every thread's stack, whenever this thread loses the CPU for too long.
+
+    Gunicorn's sync worker dies if it cannot touch its heartbeat within --timeout (300 s).
+    Two suspects for the unexplained 2026-08-12 09:30:52 kill were measured and cleared on
+    the device: sysData does not grow (downsample bounds every record at 200) and five
+    concurrent config dumps starve a heartbeat by at most 170 ms, ~1800x under the limit.
+    Whatever the real cause is, it stalls this loop too -- so capture the evidence in the act
+    rather than reasoning backwards from a vanished log.
+    """
+    last = time.time()
+    while True:
+        time.sleep(1.0)
+        now = time.time()
+        gap = now - last
+        last = now
+        if gap < _STALL_REPORT_SECONDS:
+            continue
+        logger.error('STALL: watchdog thread lost the CPU for %.1fs (gunicorn --timeout is 300s)', gap)
+        frames = sys._current_frames()
+        for thread in threading.enumerate():
+            stack = frames.get(thread.ident)
+            if stack is None:
+                continue
+            logger.error('STALL: thread %s (%s)\n%s', thread.name, thread.ident,
+                         ''.join(traceback.format_stack(stack)))
+        try:  # cheap and often decisive: an SD-card write stall shows up as high load, not CPU
+            with open('/proc/loadavg') as fh:
+                logger.error('STALL: loadavg %s', fh.read().strip())
+        except IOError:
+            pass
+
+
+def start_stall_watchdog():
+    watcher = Thread(target=_stall_watchdog)
+    watcher.setDaemon(True)
+    watcher.start()
+    return watcher
 
 
 class _I2CDevice:
@@ -126,7 +212,14 @@ def I2CCom(M, device, rw, hl, data1, data2, SMBUSFLAG):
 
     #cID=str(M)+str(device)+'d'+str(data1)+'d'+str(data2)  # This is an ID string for the communication that we are trying to send - not used at present
     #Any time a thread gets to this point it will wait until the lock is free. Then, only one thread at a time will advance.
+    #Timed so a starved waiter leaves a trace: one I2CCom is bounded, so a long wait here means
+    #queueing behind other threads. threading.Lock is unfair, so sustained contention can starve
+    #a waiter indefinitely -- a candidate for the unexplained worker timeout (see TODO.md).
+    _waitStart = time.monotonic()
     lock.acquire()
+    _waited = time.monotonic() - _waitStart
+    if _waited > _SLOW_LOCK_SECONDS:
+        logger.warning('I2C bus lock wait %.1fs for %s on %s (contended)', _waited, device, M)
     try:
         #We now connect the multiplexer to the appropriate device to allow digital communications.
         tries = 0

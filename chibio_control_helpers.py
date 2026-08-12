@@ -234,14 +234,18 @@ _CSV_COLUMN_UNITS = {
     'thermostat_setpoint': 'C', 'heating_rate': 'frac', 'internal_air_temp': 'C',
     'external_air_temp': 'C', 'media_temp': 'C', 'opt_gen_act_int': 'bool',
     'pump_1_rate': 'frac', 'pump_2_rate': 'frac', 'pump_3_rate': 'frac', 'pump_4_rate': 'frac',
+    'pump_1_ontime_ms': 'ms', 'pump_2_ontime_ms': 'ms', 'pump_3_ontime_ms': 'ms', 'pump_4_ontime_ms': 'ms',
     'media_vol': 'mL', 'stirring_rate': 'frac',
     'LED_395nm_setpoint': 'frac', 'LED_457nm_setpoint': 'frac', 'LED_500nm_setpoint': 'frac',
     'LED_523nm_setpoint': 'frac', 'LED_595nm_setpoint': 'frac', 'LED_623nm_setpoint': 'frac',
     'LED_6500K_setpoint': 'frac', 'LED_600nm_setpoint': 'frac', 'LED_550nm_setpoint': 'frac',
     'LED_White_setpoint': 'frac', 'laser_setpoint': 'frac', 'LED_UV_int': 'frac',
-    'FP1_base': 'counts', 'FP1_emit1': 'ratio', 'FP1_emit2': 'ratio', 'FP1_gain_used': 'gain_index', 'FP1_spread': 'counts',
-    'FP2_base': 'counts', 'FP2_emit1': 'ratio', 'FP2_emit2': 'ratio', 'FP2_gain_used': 'gain_index', 'FP2_spread': 'counts',
-    'FP3_base': 'counts', 'FP3_emit1': 'ratio', 'FP3_emit2': 'ratio', 'FP3_gain_used': 'gain_index', 'FP3_spread': 'counts',
+    'FP1_base': 'counts', 'FP1_emit1': 'ratio', 'FP1_emit2': 'ratio',
+    'FP1_emit1_raw': 'counts', 'FP1_emit2_raw': 'counts', 'FP1_gain_used': 'gain_index', 'FP1_spread': 'counts',
+    'FP2_base': 'counts', 'FP2_emit1': 'ratio', 'FP2_emit2': 'ratio',
+    'FP2_emit1_raw': 'counts', 'FP2_emit2_raw': 'counts', 'FP2_gain_used': 'gain_index', 'FP2_spread': 'counts',
+    'FP3_base': 'counts', 'FP3_emit1': 'ratio', 'FP3_emit2': 'ratio',
+    'FP3_emit1_raw': 'counts', 'FP3_emit2_raw': 'counts', 'FP3_gain_used': 'gain_index', 'FP3_spread': 'counts',
     'custom_prog_param1': 'program-defined', 'custom_prog_param2': 'program-defined',
     'custom_prog_param3': 'program-defined', 'custom_prog_status': 'program-defined',
     'zigzag_target': 'OD', 'growth_rate': 'per_hour',
@@ -285,6 +289,14 @@ def csvData(M):
         'pump_2_rate': sysData[M]['Pump2']['record'][-1],
         'pump_3_rate': sysData[M]['Pump3']['record'][-1],
         'pump_4_rate': sysData[M]['Pump4']['record'][-1],
+        # What each pump ACTUALLY ran for on its last duty cycle (ms). The rates above are what
+        # was ASKED for; delivered volume follows the achieved on-time, so logging it is what
+        # lets a dilution rate -- and the growth rate derived from it -- be checked rather than
+        # assumed.
+        'pump_1_ontime_ms': sysData[M]['Pump1'].get('lastOntimeMs',0.0),
+        'pump_2_ontime_ms': sysData[M]['Pump2'].get('lastOntimeMs',0.0),
+        'pump_3_ontime_ms': sysData[M]['Pump3'].get('lastOntimeMs',0.0),
+        'pump_4_ontime_ms': sysData[M]['Pump4'].get('lastOntimeMs',0.0),
         'media_vol': sysData[M]['Volume']['target'],
         'stirring_rate': sysData[M]['Stir']['target']*sysData[M]['Stir']['ON'],
     }
@@ -297,6 +309,11 @@ def csvData(M):
         data[FP+'_base']  = float('nan') if invalid else (sysData[M][FP]['Base']  if on else 0.0)
         data[FP+'_emit1'] = float('nan') if invalid else (sysData[M][FP]['Emit1'] if on else 0.0)
         data[FP+'_emit2'] = float('nan') if invalid else (sysData[M][FP]['Emit2'] if on else 0.0)
+        # Emission counts BEFORE the Clear division. The ratio above goes nonlinear as the
+        # Clear base approaches its ceiling, and matched non-fluorescent-control subtraction
+        # needs the counts, not the ratio -- so keep both rather than only the derived one.
+        data[FP+'_emit1_raw'] = float('nan') if invalid else (sysData[M][FP].get('Emit1Raw',0.0) if on else 0.0)
+        data[FP+'_emit2_raw'] = float('nan') if invalid else (sysData[M][FP].get('Emit2Raw',0.0) if on else 0.0)
         data[FP+'_gain_used'] = sysData[M][FP].get('GainUsed',0) if on else 0  #auto-ranged gain index; known even on a failed read
         data[FP+'_spread'] = (float('nan') if invalid else (sysData[M][FP].get('spread',0.0) if on else 0.0))  #base-signal spread across replicates
     data['custom_prog_param1'] = sysData[M]['Custom']['param1']*float(sysData[M]['Custom']['ON'])

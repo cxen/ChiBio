@@ -9,6 +9,7 @@ combination, which is then applied to an FP slot via the normal SetFPMeasurement
 import time
 import logging
 
+from chibio_hardware import measurement_sequence
 from chibio_state import sysData, sysItems
 
 logger = logging.getLogger('chibio')
@@ -131,16 +132,25 @@ def fluorescence_scan(M, mode='quick'):
     for led, wl in excitation_leds(M):
         best_row = None
         for p in powers:
-            set_output_target_sync(M, led, p)
-            set_output_on_sync(M, led, 1)
-            # Dropouts are transient, so re-read a couple of times before accepting an invalid
-            # spectrum; only a genuinely dead read reaches the EEM, and it carries _valid=0.
-            for _attempt in range(_SCAN_READ_RETRIES + 1):
-                time.sleep(0.1)
-                spec = _emission_spectrum(M)
-                if spec['_valid']:
-                    break
-            set_output_on_sync(M, led, 0)
+            # Hold the reactor's measurement mutex across this LED's whole drive->read->off.
+            # Without it the scan and the reactor's own experiment cycle interleave on the
+            # same hardware -- the scan switches a light off between the cycle's switch-on
+            # and its read (an unflagged raw=0 row), and on 2026-08-11 that collision also
+            # killed M3's experiment thread outright. Per-LED rather than around the whole
+            # scan so a waiting cycle only queues for one read, not the entire sweep.
+            with measurement_sequence(M):
+                set_output_target_sync(M, led, p)
+                set_output_on_sync(M, led, 1)
+                try:
+                    # Dropouts are transient, so re-read a couple of times before accepting an
+                    # invalid spectrum; only a genuinely dead read reaches the EEM, carrying _valid=0.
+                    for _attempt in range(_SCAN_READ_RETRIES + 1):
+                        time.sleep(0.1)
+                        spec = _emission_spectrum(M)
+                        if spec['_valid']:
+                            break
+                finally:
+                    set_output_on_sync(M, led, 0) #never leave an excitation LED on
             mult = _gain_multiplier(spec['_gain'])
             row = {'_gain': spec['_gain'], '_wl': wl, '_power': p, '_valid': spec['_valid']}
             total = 0.0

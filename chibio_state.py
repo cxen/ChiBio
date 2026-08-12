@@ -1,5 +1,5 @@
 import copy
-from threading import Lock
+from threading import Lock, RLock
 
 
 lock = Lock()
@@ -29,7 +29,10 @@ sysData = {'M0' : {
    'UV' : {'WL' : 'UV', 'default': 0.5, 'target' : 0.0, 'max': 1.0, 'min' : 0.0,'ON' : 0},
    'Heat' : {'default': 0.0, 'target' : 0.0, 'max': 1.0, 'min' : 0.0,'ON' : 0,'record' : []},
    'Thermostat' : {'default': 37.0, 'target' : 0.0, 'max': 50.0, 'min' : 0.0,'ON' : 0,'record' : [],'cycleTime' : 30.0, 'Integral' : 0.0,'last' : -1},
-   'Experiment' : {'indicator' : 'USR0', 'startTime' : 'Waiting', 'startTimeRaw' : 0, 'ON' : 0,'cycles' : 0, 'cycleTime' : 60.0,'threadCount' : 0},
+   #lastCycleMonotonic/stalled: liveness. MONOTONIC seconds, not a wall clock -- unusable for display. A dead experiment thread is otherwise invisible -- OD['current']
+   #holds its last value and reads as live, plausible, low-spread data (INVARIANTS 2). cycles
+   #advancing is the only reliable liveness signal, so timestamp it and let a watchdog flag it.
+   'Experiment' : {'indicator' : 'USR0', 'startTime' : 'Waiting', 'startTimeRaw' : 0, 'ON' : 0,'cycles' : 0, 'cycleTime' : 60.0,'threadCount' : 0,'lastCycleMonotonic' : 0.0,'stalled' : 0},
    'Terminal' : {'text' : ''},
    'AS7341' : {
         'spectrum' : {'nm410' : 0, 'nm440' : 0, 'nm470' : 0, 'nm510' : 0, 'nm550' : 0, 'nm583' : 0, 'nm620' : 0, 'nm670' : 0,'CLEAR' : 0, 'NIR' : 0,'DARK' : 0,'ExtGPIO' : 0, 'ExtINT' : 0, 'FLICKER' : 0},
@@ -44,10 +47,12 @@ sysData = {'M0' : {
    'Zigzag': {'ON' : 0, 'Zig' : 0.04,'target' : 0.0,'SwitchPoint' : 0},
    'GrowthRate': {'current' : 0.0,'record' : [],'default' : 2.0},
    'Volume' : {'target' : 20.0,'max' : 50.0, 'min' : 0.0,'ON' : 0},
-   'Pump1' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0},
-   'Pump2' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0},
-   'Pump3' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0},
-   'Pump4' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0},
+   #lastOntimeMs: what the pump ACTUALLY ran for on its last duty cycle (ms). Delivered volume
+   #is proportional to it, so logging it turns an assumed dose into a measured one.
+   'Pump1' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0,'lastOntimeMs' : 0.0},
+   'Pump2' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0,'lastOntimeMs' : 0.0},
+   'Pump3' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0,'lastOntimeMs' : 0.0},
+   'Pump4' :  {'target' : 0.0,'default' : 0.0,'max': 1.0, 'min' : -1.0, 'direction' : 1.0, 'ON' : 0,'record' : [], 'thread' : 0,'lastOntimeMs' : 0.0},
    'Stir' :  {'target' : 0.0,'default' : 0.5,'max': 1.0, 'min' : 0.0, 'ON' : 0},
    'Light' :  {'target' : 0.0,'default' : 0.5,'max': 1.0, 'min' : 0.0, 'ON' : 0, 'Excite' : 'LEDD', 'record' : []},
    'Custom' :  {'Status' : 0.0,'default' : 0.0,'Program': 'C1', 'ON' : 0,'param1' : 0, 'param2' : 0, 'param3' : 0.0, 'record' : []},
@@ -90,6 +95,22 @@ sysDevices = {'M0' : {
 for M in ['M1','M2','M3','M4','M5','M6','M7']:
         sysData[M]=copy.deepcopy(sysData['M0'])
         sysDevices[M]=copy.deepcopy(sysDevices['M0'])
+
+
+# Per-reactor measurement mutex. The global `lock` above serializes individual I2C
+# transactions; it does NOT serialize an on->read->off SEQUENCE. So a FluorescenceScan can
+# switch a laser/LED off between an experiment cycle's switch-on and its read, producing
+# raw=0 / od_spread~1.1 with valid=1 -- an unflagged corrupt row, and at least once a dead
+# experiment thread (INVARIANTS 5). Anything that drives an output and then reads it on the
+# same reactor must hold this for the WHOLE sequence, not just per transaction.
+# An RLock, so a thread already holding a reactor's guard can take it again -- runExperiment
+# holds it across its replicate series while each measure_od inside re-takes it via
+# get_transmission. Re-entrancy must come from the lock itself, not from bookkeeping on the
+# thread object: a per-thread "which reactor am I holding" marker only tracks ONE reactor, so
+# nesting across two reactors would clear the outer marker and deadlock the next acquisition.
+# Assigned after the deepcopy above because a lock cannot be deepcopied.
+for M in ['M0','M1','M2','M3','M4','M5','M6','M7']:
+        sysDevices[M]['measureLock']=RLock()
 
 
 # sysItems stores information about digital addresses which is used as a reference

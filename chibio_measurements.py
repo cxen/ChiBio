@@ -2,28 +2,33 @@ import math
 import logging
 
 from chibio_hardware import I2CCom
-from chibio_optics import get_transmission
+from chibio_optics import NEAR_SATURATION_FRACTION, get_transmission
 from chibio_state import sysData, sysItems
 
 logger = logging.getLogger('chibio')
 
 
-# ~92% of the 16-bit (65535) ADC ceiling. Above this the CLEAR "base" compresses toward
-# clipping, so the emit/base ratio inflates and reads as an artifactual signal change.
-# get_light's autorange only retries on an EXACT 65535, so near-ceiling bases slip through
-# (measured on a dense culture: 27% of FP cycles > 60000, some pinned at the ceiling).
-# ponytail: fixed threshold; retune against a saturating culture if 60000 proves off.
-_FP_BASE_NEAR_SATURATION = 60000
+# ~92% of full scale. Above this the CLEAR "base" compresses toward clipping, so the
+# emit/base ratio inflates and reads as an artifactual signal change. Now expressed against
+# the read's ACTUAL full scale (adc_full_scale) rather than a hardcoded 65535: identical at
+# the 255-step integration FP uses, but still correct if integration time ever changes.
+# ponytail: fixed threshold; retune against a saturating culture if ~92% proves off.
+_FP_BASE_NEAR_SATURATION = 60000  # the equivalent count at the 65535 full scale of an FP read
 
 
-def _fp_valid_flag(base, as7341_valid):
+def _fp_valid_flag(base, as7341_valid, full_scale=65535, hw_saturated=0):
     # A near-saturated CLEAR base makes the emit/base ratio untrustworthy, so mark the read
     # invalid — csvData then logs NaN for the cell instead of a silently-corrupted ratio,
     # keeping the same validity/NaN contract as a comms failure (see the
     # sensor-failure-semantics and fluorescence-quantification-untrustworthy memories).
+    # This is now the LAST line of defence rather than the first: auto-range steps the gain
+    # down at this same headroom, so a hot base normally comes back re-read at a usable gain
+    # instead of being discarded. What still reaches here is a base hot even at gain 0.
     if as7341_valid == 0:
         return 0
-    if base >= _FP_BASE_NEAR_SATURATION:
+    if hw_saturated:
+        return 0  # ASAT fires before the digital counter fills, so counts alone cannot see it
+    if base >= full_scale * NEAR_SATURATION_FRACTION:
         return 0
     return 1
 
@@ -44,7 +49,12 @@ def _od_from_transmission(M, device, transmission):
     if device=='LASER650':
         a=sysData[M]['OD0']['LASERa']
         b=sysData[M]['OD0']['LASERb']
-        if abs(transmission) > 0.001:
+        #Guard on `transmission > 0.001`, not `abs(...) > 0.001`. Dark subtraction can push the
+        #corrected transmission negative on a very dim read (raw below the dark background), and
+        #log10 of a negative raises ValueError, which would propagate out of measure_od and kill
+        #the calling experiment thread. Not seen in Run 0 -- a killed read zeroes CLEAR and DARK
+        #together -- but it needs no collision to happen, just raw < dark once.
+        if transmission > 0.001:
             r=math.log10(sysData[M]['OD0']['target']/transmission)
             return r*b + r*r*a
         return 0
@@ -143,13 +153,23 @@ def measure_fp(M):
             out=get_transmission(M,sysData[M][FP]['LED'],[sysData[M][FP]['BaseBand'],sysData[M][FP]['Emit1Band'],sysData[M][FP]['Emit2Band']],Gain,255,autorange=True)
             sysData[M][FP]['GainUsed']=sysData[M]['AS7341']['current'].get('gain',Gain)
             sysData[M][FP]['Base']=float(out[0])
+            #Keep the emission counts BEFORE the Clear division. The stored Emit1/Emit2 are
+            #ratios, and while emit_raw = ratio x base is algebraically recoverable, that
+            #identity is not obvious and costs precision at both ends. Matched
+            #non-fluorescent-control subtraction -- the robust alternative to ratiometric
+            #normalisation -- works on these counts, so record them directly.
+            sysData[M][FP]['Emit1Raw']=float(out[1])
+            sysData[M][FP]['Emit2Raw']=float(out[2])
             if (sysData[M][FP]['Base']>0):
                 sysData[M][FP]['Emit1']=float(out[1])/sysData[M][FP]['Base']
                 sysData[M][FP]['Emit2']=float(out[2])/sysData[M][FP]['Base']
             else:#This might happen if you try to measure in CLEAR whilst also having CLEAR as baseband!
                 sysData[M][FP]['Emit1']=float(out[1])
                 sysData[M][FP]['Emit2']=float(out[2])
-            sysData[M][FP]['valid']=_fp_valid_flag(sysData[M][FP]['Base'],sysData[M]['AS7341']['current'].get('valid',1)) #see sensor-failure-semantics + the near-saturation guard above
+            sysData[M][FP]['valid']=_fp_valid_flag(sysData[M][FP]['Base'],
+                                                   sysData[M]['AS7341']['current'].get('valid',1),
+                                                   sysData[M]['AS7341']['current'].get('fullScale',65535),
+                                                   sysData[M]['AS7341']['current'].get('saturated',0)) #see sensor-failure-semantics + the near-saturation guard above
 
 
 def measure_temp(M, which):

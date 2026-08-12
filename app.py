@@ -9,8 +9,8 @@ import logging
 from flask import Flask, render_template, jsonify
 from chibio_auth import init_auth
 from chibio_experiment import PumpModulation, RegulateOD, Thermostat, Zigzag, runExperiment
-from chibio_hardware import I2CCom, get_i2c_device, setPWM, setup_watchdog
-from chibio_optics import get_light, get_spectrum
+from chibio_hardware import I2CCom, get_i2c_device, setPWM, setup_watchdog, start_stall_watchdog
+from chibio_optics import adc_full_scale, get_light, get_spectrum
 from chibio_state import sysData, sysDevices, sysItems
 import chibio_sim
 from threading import Thread
@@ -52,20 +52,91 @@ def add_no_cache_headers(response):
     return response
 
 
+# Backstop against a command burst spawning threads faster than they retire. Each background
+# task is slow (a measurement settles in ~1.6 s) and they all contend for one global bus lock,
+# so an uncapped spawn turns a fast series of clicks into a pile of blocked threads and an
+# unresponsive server. Well above any legitimate burst: 8 reactors x a handful of actions.
+_MAX_BACKGROUND_THREADS = 64
+_background_count = [0]
+_background_count_lock = threading.Lock()
+
+
 def run_background(target, *args, **kwargs):
+    name = getattr(target, '__name__', 'task')
+    with _background_count_lock:
+        if _background_count[0] >= _MAX_BACKGROUND_THREADS:
+            logger.error('Refusing to start background task %s: %d already running. '
+                         'Commands are arriving faster than the bus can service them.',
+                         name, _background_count[0])
+            return None
+        _background_count[0] += 1
+
     def wrapper():
         try:
             target(*args, **kwargs)
         except Exception:
-            logger.exception(
-                'Background task failed: %s',
-                getattr(target, '__name__', 'task')
-            )
+            logger.exception('Background task failed: %s', name)
+        finally:
+            with _background_count_lock:
+                _background_count[0] -= 1
 
     thread = Thread(target=wrapper)
     thread.setDaemon(True)
     thread.start()
     return thread
+
+
+# One in-flight slot per (reactor, exact measurement). Keyed on the arguments too, so
+# Internal/External/IR temperature are three distinct measurements rather than one.
+_measure_inflight = {}
+_measure_inflight_lock = threading.Lock()
+
+
+def _inflight_slot(key):
+    with _measure_inflight_lock:
+        slot = _measure_inflight.get(key)
+        if slot is None:
+            slot = threading.Lock()
+            _measure_inflight[key] = slot
+        return slot
+
+
+def run_measurement(target, M, *args):
+    """Fire-and-forget a manual measurement, dropping it if the SAME one is already in flight.
+
+    Measurement routes are fire-and-forget and settle in ~1.6 s. Firing faster than that used
+    to let sibling threads switch the laser off mid-read (raw=0 with valid=1); the per-reactor
+    measurement mutex now prevents that, but on its own it would convert a burst of clicks
+    into a queue of blocked threads -- the soft-lock. A repeat of a measurement already
+    running conveys nothing the first will not, so coalesce it instead of queueing.
+
+    Coalescing is per exact measurement, NOT per reactor: distinct measurements issued
+    back-to-back (as the self-test and the UI both do) must all run, and they serialize
+    safely on the reactor's measurement mutex. Keying this too broadly silently drops real
+    readings and leaves the stale previous value in their place.
+
+    Returns True if a measurement was started, False if that same one was already running.
+    """
+    M = str(M)
+    if M == "0":
+        M = sysItems['UIDevice']
+    name = getattr(target, '__name__', 'measurement')
+    slot = _inflight_slot((M, name) + tuple(str(a) for a in args))
+    if not slot.acquire(False):
+        logger.info('Dropping %s%s on %s: that measurement is already in flight',
+                    name, args if args else '', M)
+        return False
+
+    def guarded(*a):
+        try:
+            target(*a)
+        finally:
+            slot.release()
+
+    if run_background(guarded, M, *args) is None:
+        slot.release()
+        return False
+    return True
 
 
 def initialise(M):
@@ -91,6 +162,8 @@ def initialise(M):
     sysData[M][FP]['Base']=0
     sysData[M][FP]['Emit1']=0
     sysData[M][FP]['Emit2']=0
+    sysData[M][FP]['Emit1Raw']=0  #emission counts before the Clear division
+    sysData[M][FP]['Emit2Raw']=0
     sysData[M][FP]['BaseBand']="CLEAR"
     sysData[M][FP]['Emit1Band']="nm510"
     sysData[M][FP]['Emit2Band']="nm550"
@@ -104,6 +177,8 @@ def initialise(M):
     sysData[M][FP]['Base']=0
     sysData[M][FP]['Emit1']=0
     sysData[M][FP]['Emit2']=0
+    sysData[M][FP]['Emit1Raw']=0  #emission counts before the Clear division
+    sysData[M][FP]['Emit2Raw']=0
     sysData[M][FP]['BaseBand']="CLEAR"
     sysData[M][FP]['Emit1Band']="nm583"
     sysData[M][FP]['Emit2Band']="nm620"
@@ -117,6 +192,8 @@ def initialise(M):
     sysData[M][FP]['Base']=0
     sysData[M][FP]['Emit1']=0
     sysData[M][FP]['Emit2']=0
+    sysData[M][FP]['Emit1Raw']=0  #emission counts before the Clear division
+    sysData[M][FP]['Emit2Raw']=0
     sysData[M][FP]['BaseBand']="CLEAR"
     sysData[M][FP]['Emit1Band']="nm620"
     sysData[M][FP]['Emit2Band']="nm670"
@@ -130,6 +207,7 @@ def initialise(M):
         sysData[M][PUMP]['target']=sysData[M][PUMP]['default']
         sysData[M][PUMP]['ON']=0
         sysData[M][PUMP]['direction']=1.0
+        sysData[M][PUMP]['lastOntimeMs']=0.0  #achieved on-time of the last duty cycle (ms)
         sysDevices[M][PUMP]['threadCount']=0
         sysDevices[M][PUMP]['active']=0
         sysDevices[M][PUMP]['running']=0
@@ -177,6 +255,8 @@ def initialise(M):
     sysData[M]['Experiment']['threadCount']=0
     sysData[M]['Experiment']['startTime']=' Waiting '
     sysData[M]['Experiment']['startTimeRaw']=0
+    sysData[M]['Experiment']['lastCycleMonotonic']=0.0  #time.monotonic() of the last completed cycle (liveness; NOT a wall clock)
+    sysData[M]['Experiment']['stalled']=0         #set by the experiment watchdog when cycles stop advancing
     sysData[M]['OD']['ON']=0
     sysData[M]['OD']['Measuring']=0
     sysData[M]['OD']['Integral']=0.0
@@ -201,6 +281,8 @@ def initialise(M):
     # spectrometer read flips these to 0, which makes csvData record NaN for that cycle.
     sysData[M]['AS7341']['current']['valid']=1
     sysData[M]['AS7341']['current']['gain']=0  #Gain actually used on the last read (auto-ranging updates it).
+    sysData[M]['AS7341']['current']['saturated']=0     #chip's own ASAT flag (STATUS2), latched with the last read
+    sysData[M]['AS7341']['current']['fullScale']=adc_full_scale(255)  #digital ceiling of the last read
     sysData[M]['OD']['valid']=1
     sysData[M]['OD']['spread']=0.0  #max-min of the replicate OD reads (measurement noise).
     sysData[M]['OD']['corrected']=0.0  #dark-corrected OD (display-only; never feeds control).
@@ -253,6 +335,12 @@ def initialise(M):
 
         V1_Present=0
         V2_Present=0
+        # This detection runs at ISteps=10, where full scale is 11,000 counts -- NOT 65535.
+        # If a bright board pins both Baseline and NewLevel, the ratio test below silently
+        # reads "LED absent" and falls through to V1 on a V2 board (wrong excitation panel,
+        # no FP3 LEDE->LEDH remap). Saturation is now detectable, so say so loudly rather
+        # than returning a confident wrong answer.
+        detectCeiling=adc_full_scale(10)
         # Now we will detect LED version First checking for version 2
         out=get_light(M,['nm583'],10,10) #Measure with maximum gain (10) and for short period.
         Baseline=out[0]
@@ -260,6 +348,10 @@ def initialise(M):
         out=get_light(M,['nm583'],10,10)
         NewLevel=out[0]
         set_output_on_sync(M,'LEDH',0) #Turn off LEDH at default level - should only be present in version 2
+        if (Baseline>=detectCeiling or NewLevel>=detectCeiling):
+            logger.error('LED version detection on %s saturated at ISteps=10 (baseline %d, '
+                         'pulsed %d, full scale %d) - the V2 test is unreliable here',
+                         M, Baseline, NewLevel, detectCeiling)
         if (NewLevel>Baseline*3+20):
             V2_Present = 1
 
@@ -868,24 +960,24 @@ def CalibrateOD(M,item,value,value2):
 @application.route("/MeasureOD/<M>",methods=['POST'])
 def MeasureOD(M):
     from chibio_measurements import measure_od
-    run_background(measure_od, M)
-    return ('', 204)  
-    
+    run_measurement(measure_od, M)  #dropped if one is already in flight on this reactor
+    return ('', 204)
 
-@application.route("/MeasureFP/<M>",methods=['POST'])    
+
+@application.route("/MeasureFP/<M>",methods=['POST'])
 def MeasureFP(M):
     from chibio_measurements import measure_fp
-    run_background(measure_fp, M)
-    return ('', 204)      
-    
+    run_measurement(measure_fp, M)
+    return ('', 204)
 
-    
-    
+
+
+
 @application.route("/MeasureTemp/<which>/<M>",methods=['POST'])
-def MeasureTemp(M,which): 
+def MeasureTemp(M,which):
     from chibio_measurements import measure_temp
-    run_background(measure_temp, M, which)
-    return ('', 204) 
+    run_measurement(measure_temp, M, which)
+    return ('', 204)
     
 
 
@@ -929,6 +1021,12 @@ def ExperimentStartStop(M,value):
         turnEverythingOff(M)
 
         set_output_on_sync(M,'Thermostat',1)
+        if (sysData[M]['Experiment']['cycles']>0):
+            # Resuming after a stalled/dead thread. turnEverythingOff above leaves the stirrer
+            # off, and the loop only turns it on at the END of its first cycle -- so without
+            # this the culture stays unstirred for a further cycle. Re-asserting Thermostat but
+            # not Stir is exactly what made the manual 2026-08-11 recovery need a stir toggle.
+            set_output_on_sync(M,'Stir',1)
         if sysDevices[M]['Experiment'].get('running', 0) == 0:
             sysDevices[M]['Experiment']['running']=1
             sysDevices[M]['Experiment']['thread']=Thread(target = runExperiment, args=(M,'placeholder'))
@@ -947,6 +1045,120 @@ def ExperimentStartStop(M,value):
     return ('', 204)
 
 
+# How many cycle-times of silence before an experiment thread counts as dead. Generous: a
+# cycle that overruns is benign, a false restart costs a measurement.
+_EXPERIMENT_STALL_CYCLES = 3.0
+_EXPERIMENT_WATCHDOG_PERIOD = 20.0
+
+
+def _restart_stalled_experiment(M, silent_for):
+    # Only ever replace a thread that is GONE. A stalled thread is not necessarily a dead one
+    # -- the leading suspect for these stalls is lock starvation, and a starved thread is very
+    # much alive. `threadCount` supersession does not help here: it is only honoured when the
+    # old loop next re-checks its while condition, so a thread blocked mid-cycle wakes up and
+    # finishes that cycle regardless -- driving RegulateOD (pumps) and appending a CSV row
+    # while the replacement does the same. Two dilution decisions per cycle on a live culture
+    # is worse than the stall it was meant to fix.
+    old = sysDevices[M]['Experiment'].get('thread')
+    if old is not None and getattr(old, 'is_alive', lambda: False)():
+        logger.error('Experiment on %s has not completed a cycle for %.0fs, but its thread is '
+                     'still alive - refusing to start a second loop. It is blocked, not dead: '
+                     'check the bus lock and the stall report.', M, silent_for)
+        addTerminal(M, 'Experiment thread stalled (still alive) - see log')
+        return
+    logger.error('Experiment thread on %s died (no cycle for %.0fs) - restarting', M, silent_for)
+    addTerminal(M, 'Experiment thread died - restarting')
+    # The dead thread's `finally` normally clears this, but do not depend on it: if `running`
+    # is left at 1, ExperimentStartStop would silently refuse to ever start a new loop.
+    sysDevices[M]['Experiment']['running'] = 0
+    # runExperiment turns the stirrer OFF to measure and only turns it back on at the end of
+    # the cycle, so a thread that dies mid-measurement leaves the culture unstirred
+    # indefinitely -- M3 sat that way for ~30 min. ExperimentStartStop re-asserts Thermostat
+    # but never Stir, which is why the manual recovery needed an explicit stir toggle.
+    try:
+        set_output_on_sync(M, 'Stir', 1)
+    except Exception:
+        logger.exception('Could not re-assert stir on %s during restart', M)
+    sysData[M]['Experiment']['lastCycleMonotonic'] = time.monotonic()  # grace period before re-judging
+    sysDevices[M]['Experiment']['running'] = 1
+    sysDevices[M]['Experiment']['thread'] = Thread(target=runExperiment, args=(M, 'placeholder'))
+    sysDevices[M]['Experiment']['thread'].setDaemon(True)
+    sysDevices[M]['Experiment']['thread'].start()
+
+
+def classify_experiment_liveness(now):
+    """Split the running reactors into (running, stalled) at wall-clock `now`.
+
+    Pure and side-effect free so the rule can be tested off-device; the caller owns the
+    policy of what to do with the split.
+    """
+    running = []
+    stalled = []
+    for M in ['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7']:
+        exp = sysData[M]['Experiment']
+        if sysData[M]['present'] != 1 or exp['ON'] != 1 or exp['cycles'] < 1:
+            continue
+        last = exp.get('lastCycleMonotonic', 0.0)
+        if not last:
+            continue  # no completed cycle yet to measure silence from
+        running.append(M)
+        if (now - last) > max(60.0, exp['cycleTime']) * _EXPERIMENT_STALL_CYCLES:
+            stalled.append(M)
+    return running, stalled
+
+
+def _experiment_watchdog():
+    """Detect an experiment thread that died mid-run, and restart it.
+
+    A dead thread is otherwise invisible. `OD['current']` holds its last computed value and
+    reads as live, plausible, stable data with a low `od_spread` and `valid=1` -- on
+    2026-08-11 a frozen 1.681 went on to drive a supervisor's dosing decisions for 90
+    minutes (INVARIANTS 2). Cycles advancing is the only reliable liveness signal.
+
+    Restarting is exactly the recovery the operator performed by hand: with cycles != 0 the
+    loop resumes, `startTime` is preserved and it appends to the same CSV.
+
+    Deliberately conservative. If EVERY running reactor is stalled at once, that is a bus- or
+    worker-level fault rather than one dead thread, so it alerts and refuses to act -- the
+    distinction INVARIANTS 5 demands after auto-recovery once restarted all five reactors
+    into fresh, unblanked CSVs.
+    """
+    while True:
+        time.sleep(_EXPERIMENT_WATCHDOG_PERIOD)
+        try:
+            now = time.time()
+            running, stalled = classify_experiment_liveness(now)
+            if not stalled:
+                for M in running:
+                    sysData[M]['Experiment']['stalled'] = 0
+                continue
+            for M in stalled:
+                sysData[M]['Experiment']['stalled'] = 1
+            # "Every reactor at once" means a bus- or worker-level fault, not a dead thread, and
+            # auto-recovery once restarted all five into fresh unblanked CSVs by missing that
+            # (INVARIANTS 5). Judge it by whether the THREADS died, not by counting stalls:
+            # with a single reactor running, every stall is trivially "all of them", which
+            # would silently disable recovery for the commonest bench configuration.
+            dead = [M for M in stalled
+                    if not getattr(sysDevices[M]['Experiment'].get('thread'), 'is_alive', lambda: False)()]
+            if dead and len(dead) == len(running) and len(running) > 1:
+                logger.error('ALL %d running reactors died at once (%s) - not one dead thread. '
+                             'Refusing to auto-restart; check the bus and restore the blanks.',
+                             len(dead), ','.join(dead))
+                continue
+            for M in stalled:
+                _restart_stalled_experiment(M, now - sysData[M]['Experiment']['lastCycleMonotonic'])
+        except Exception:
+            logger.exception('Experiment watchdog iteration failed')
+
+
+def start_experiment_watchdog():
+    watcher = Thread(target=_experiment_watchdog)
+    watcher.setDaemon(True)
+    watcher.start()
+    return watcher
+
+
 def _boot():
     # Three ways in. CHIBIO_SIM: patch the bus + optics, then run the REAL
     # initialiseAll() on top of the fake hardware (see chibio_sim). CHIBIO_MOCK_HW
@@ -956,6 +1168,12 @@ def _boot():
         chibio_sim.install()
     elif not MOCK_HW:
         initialiseAll()
+    if chibio_sim.SIM or not MOCK_HW:
+        # Catches the next unexplained worker kill in the act (see TODO.md): reports every
+        # thread's stack if this loop ever loses the CPU for 30 s. Not started under the bare
+        # import shim, which runs no threads for it to report on.
+        start_stall_watchdog()
+        start_experiment_watchdog()
 
 
 if __name__ == '__main__':

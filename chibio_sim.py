@@ -251,7 +251,8 @@ def sim_get_light(M, wavelengths, Gain, ISteps, autorange=False):
     'valid' and 'gain' keys measure_od and measure_fp go on to read), mirrors the
     real auto-range stepping, and returns the same six-element list.
     """
-    from chibio_optics import _ADC_SATURATED, _AUTORANGE_MAX_TRIES, _AUTORANGE_WEAK
+    from chibio_optics import (NEAR_SATURATION_FRACTION, _AUTORANGE_MAX_TRIES,
+                               _AUTORANGE_WEAK, adc_full_scale)
     from chibio_state import sysData
 
     M = str(M)
@@ -276,10 +277,12 @@ def sim_get_light(M, wavelengths, Gain, ISteps, autorange=False):
         return [_counts(M, w, source, power, scale, od, rng) for w in wavelengths[:6]]
 
     raw = read(Gain)
+    full_scale = adc_full_scale(ISteps)
+    hot = full_scale * NEAR_SATURATION_FRACTION  # mirror the real headroom-based step-down
     if autorange:
         tries = 0
         while tries < _AUTORANGE_MAX_TRIES:
-            if any(v >= _ADC_SATURATED for v in raw) and Gain > 0:
+            if any(v >= hot for v in raw) and Gain > 0:
                 Gain = Gain - 1
             elif raw and max(raw) < _AUTORANGE_WEAK and Gain < 10:
                 Gain = Gain + 1
@@ -291,9 +294,16 @@ def sim_get_light(M, wavelengths, Gain, ISteps, autorange=False):
     DACS = ['ADC0', 'ADC1', 'ADC2', 'ADC3', 'ADC4', 'ADC5']
     for i in range(6):
         value = raw[i] if i < len(raw) else 0.0
-        sysData[M]['AS7341']['current'][DACS[i]] = int(min(max(value, 0.0), 65535.0))
+        # Clip at the read's real full scale, not always 65535 -- a short integration cannot
+        # reach 65535, which is the whole point of adc_full_scale.
+        sysData[M]['AS7341']['current'][DACS[i]] = int(min(max(value, 0.0), float(full_scale)))
     sysData[M]['AS7341']['current']['valid'] = 1
     sysData[M]['AS7341']['current']['gain'] = Gain
+    sysData[M]['AS7341']['current']['fullScale'] = full_scale
+    # Mirrors STATUS2's ASAT bits, which on real hardware fire as the ADC pins. (The chip does
+    # not report the gain it applied -- ASTATUS reads 0x00 on this rig -- so nothing to model.)
+    sysData[M]['AS7341']['current']['saturated'] = 1 if any(
+        v >= full_scale for v in raw) else 0
 
     output = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     for index, wavelength in enumerate(wavelengths[:6]):
