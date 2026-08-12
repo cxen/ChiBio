@@ -7,7 +7,7 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 
 ---
 
-## ▶ START HERE — state of the rig, 2026-08-12
+## ▶ START HERE — state of the rig, 2026-08-13
 
 **Read `INVARIANTS.md` first.** It is the operational rulebook: what happens when you touch
 hardware, how to write watcher scripts that don't kill their own shell, the single-owner rule,
@@ -29,16 +29,20 @@ md5-verified to `~/chibio-run0-2026-08-11/`. Full narrative, timings and results
 - The FP gain change (512× → 32×) took the CLEAR base from 34–60k to 3.5–8.5k and **eliminated
   all NaN losses** (previously 24–57% of rows).
 
-**Nothing is running.** Server up, all outputs off. The whole code backlog below is therefore
-**unblocked** — it was blocked all of 2026-08-11/12 because every fix needs a server restart and
-a restart wipes RAM-only experiment state.
+**Nothing is running.** Server up on `/root/chibio`, M0–M3 present, all outputs off, laser
+targets at 0.5. **Re-blank before the next run** ([[od-blanking]]) — blanks are RAM-only and the
+deploy restarted the worker.
+
+**The code backlog below is cleared, shipped and pushed.** `master` = Mac = device =
+`origin/master` = **`7b3d268`**. `device_selftest.py` **16/16** on production, off-device suite
+**13/13**. The `fix/concurrency-and-saturation` and `docs/literature-audit-rev2` branches were
+fast-forwarded into `master` and deleted; nothing is outstanding.
 
 ### Next actions, in priority order
 
-**The code backlog below is now cleared** (2026-08-12 evening) — all four live-run defects, all
-four audit defects, and a soft-lock defect found during the work. Staging = `8728610`, device
-self-test **16/16**, off-device suite **13/13**. What remains is bench work plus the diagnosis
-that instrumentation now has to catch in the act.
+All four live-run defects, all four audit defects, and three more found while fixing them
+(a rapid-command soft-lock, and two in `CharacteriseDevice`) are done and on the device. What
+remains is bench work plus the one diagnosis that instrumentation now has to catch in the act.
 
 **Adversarial hardware test, 2026-08-12 22:12–22:41 (4 reactors, real cultures, FP1 on at x10).**
 A `FluorescenceScan` was fired at `M0` **timed to hit mid-measurement** (poll `OD['Measuring']`,
@@ -143,13 +147,13 @@ the diagnosis is the part worth re-reading.
 - [x] **FP gain must be planned against the density the run will reach, not its starting density.** *(Fixed 2026-08-12.)* Auto-range now steps the gain down on lost **headroom** (~92% of full scale, the same line the FP guard uses) instead of only on an exact 65535 — so the whole 60000–65534 band that NaN'd 49% of M4's FP1 rows is now re-read at a usable gain rather than discarded. The guard is expressed as a fraction of the read's actual full scale, identical to 60000 counts at the 255-step integration FP uses.
 
   *Original diagnosis:* At the runbook's `x10` (index 10 = 512×) the CLEAR base climbed from ~6–11k at inoculation to 34–60k within two hours, and the 60000 near-saturation guard NaN'd **49% of M4's FP1 rows, 57% of M0's FP2, and 24–28% of all three on M1**. Autorange does not rescue this: it only steps down on an *exact* 65535, so the whole 60000–65534 band is lost. The sterile M2 lost nothing, confirming cell scatter as the cause. Dropping to index 6 (32×) mid-run took the base to 3.5–8.5k. Options: default the assist to a lower starting gain, make autorange trigger on the guard threshold rather than 65535, or expose a headroom-aware recommendation. Note the ratio is gain-invariant, so a mid-run gain change is safe for comparability — and `SetFPMeasurement` already logs it to the events sidecar.
-- [ ] **Correction to the audit's §4.3.1 exposure.** Raw FP emissions *are* recoverable from the current CSV after all: `FP*_base` is logged as **raw counts**, `FP*_gain_used` per row, and the emissions are ratios of that base — so `emit_raw = emit_ratio × base` at a known gain. Matched-control subtraction **can** be retro-fitted to this dataset. The raw-emit column below is still worth landing (precision, and not making every analyst rediscover the identity), but it is not data-losing.
+- [x] **Correction to the audit's §4.3.1 exposure.** *(Recorded; the raw-emit columns landed 2026-08-12, so this is closed.)* Raw FP emissions *are* recoverable from the current CSV after all: `FP*_base` is logged as **raw counts**, `FP*_gain_used` per row, and the emissions are ratios of that base — so `emit_raw = emit_ratio × base` at a known gain. Matched-control subtraction **can** be retro-fitted to this dataset. The raw-emit column below is still worth landing (precision, and not making every analyst rediscover the identity), but it is not data-losing.
 
 - [x] **Raw OD and raw FP emissions are computed and discarded.** *(Fixed 2026-08-12; scope corrected — `od_raw` already existed as `od_transmission_raw`.)* Added `FP{1,2,3}_emit{1,2}_raw`, the emission counts before the Clear division, carried through the same replicate/median path. Note each key is medianed independently, so `emit_raw/base` need not exactly equal the logged ratio. CSV is now 63 columns; the metadata sidecar's `column_units` covers all of them (drift-guarded by `test_metadata_sidecar.py`).
 
   *Original diagnosis:* Highest value-per-line change in the audit. `OD0['raw']` → an `od_raw` CSV column, and the FP emission counts *before* the Clear division → `FP{1,2,3}_emit{1,2}_raw`. Combined with a RAM-only blank ([[od-blanking]]), a mid-run restart currently changes the meaning of the OD column with no way to undo it; and matched-control subtraction **cannot be retro-fitted to data already collected** while only ratios are stored. Both are this fork's documented 2–3 place edit (`initialise()` + `csvData()` + `downsample()`) and compose with the existing `logEvent` blank records. Prior art: `zoltuz@imperial_GBS`.
 
-### Found while fixing the above, 2026-08-12
+### Found while fixing the above, 2026-08-12/13
 
 - [x] **Rapid commands soft-lock the server (uncapped background threads).** *(Fixed +
   device-verified 2026-08-12.)* Every POST to a `/Measure*` or output route called
@@ -165,6 +169,22 @@ the diagnosis is the part worth re-reading.
   latency 23 ms, `/getSysdata/` answering in 24 ms immediately after, no `raw=0` row.
   Distinct from the M4 fault (M4 was healthy through Run 0) and from the 20:12:57 worker
   timeout, though all three share the single-core-plus-one-bus-lock root.
+- [x] **`CharacteriseDevice` silently rescaled OD, and corrupted any concurrent experiment.**
+  *(Fixed + device-verified 2026-08-13.)* Found by running the newly-guarded characterisation
+  against a live experiment. Two defects, both invisible from outside:
+  - The power sweep **left every LED and `LASER650` at 1.0**, the last level it visits, and never
+    restored them. The blank is taken at `LASER650=0.5`, so the reactor goes on reporting OD
+    against a laser at twice that power until someone re-blanks or restarts — **M0 read OD 3.17
+    before characterisation and 2.60 after**, with nothing to indicate why. Targets are now saved
+    up front and restored in a `finally`, so a run that dies partway cannot strand the laser.
+  - Run **during** an experiment, the sweep takes `LASER650` down to zero power and a cycle
+    measuring in that window logged **OD 9.99**. The per-reactor mutex makes each read atomic but
+    cannot hold a *shared power target* still between them, so `/CharacteriseDevice` now returns
+    **409** while an experiment is running on that reactor. Verified on the device: 409 while
+    running; a clean run restores every target exactly and leaves no output on.
+  - Note the scope limit this exposes: the mutex protects on→read→off **sequences**, not shared
+    *setpoints*. Anything that sweeps an output's power while another thread measures the same
+    reactor must decline, not just serialise.
 - **Consequence for [[measurement-routes-not-reentrant]]:** the ≥5 s spacing rule is now a
   data-quality preference, not a correctness requirement — the mutex makes overlapping reads
   safe. Blanking should still space its reads, because settling time is physical.
