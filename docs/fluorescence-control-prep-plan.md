@@ -111,7 +111,7 @@ Clear-channel saturation regime.
 - **One batch, one bottle, one day, for all five reactors** — including the sterile blank
   reactor, which must be the same media. Do not split across preparations. Media background is
   precisely the thing subtraction cannot remove.
-- **20 mL working volume per reactor** (1 mL inoculum into 19 mL) — Chi.Bio's own standard, and
+- **20 mL working volume per reactor** (500 µL inoculum into 20 mL) — Chi.Bio's own standard, and
   the extra headspace matters because these runs are unaerated (below). Five reactors ≈ 100 mL;
   make **500 mL** to cover overnights, washing, blanking, and spillage.
 - Batch mode. No pumps or reservoirs needed for Runs 0–1.
@@ -137,7 +137,8 @@ Clear-channel saturation regime.
 
 ## 5. Starting density and the scan ladder
 
-**Inoculate to OD ≈ 0.02** — 1 mL of a washed OD ~0.45 stock into 19 mL (20 mL final).
+**Inoculate to OD ≈ 0.011** — 500 µL of a washed OD ~0.45 stock into 20 mL. (Revised down from
+1 mL / OD 0.02 on 2026-08-11; see the runbook §7.2 note on the ~0.02 OD practical floor.)
 Don't start lower; you want the whole ladder inside a working day.
 
 At μ ≈ 0.65/h (doubling ~64 min) from OD 0.02:

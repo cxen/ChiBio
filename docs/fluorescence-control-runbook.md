@@ -275,11 +275,11 @@ Clock times assume an 08:00 start; **trigger the ladder scans off measured OD, n
 
 | Time | Step |
 |---|---|
-| 08:00 | Fill all 5 reactors with **19 mL** media. Fit the **0.22 µm vent filters**. Thermostat 37 °C ON, stir ON, on **all five** (M2 included — its optics must match). |
+| 08:00 | Fill all 5 reactors with **20 mL** media. Fit the **0.22 µm vent filters**. Thermostat 37 °C ON, stir ON, on **all five** (M2 included — its optics must match). |
 | 08:45 | Temperature equilibrated. **Blank every reactor** (§7.1). |
 | 09:00 | **Sterile EEM scan, all 5** (§7.3, ~7 min). This is your OD-0 ladder point and is unrecoverable once you inoculate. |
 | 09:15 | Wash and normalize inocula (§7.2). Set FP3 config (§7.4). |
-| 09:30 | **Inoculate M0, M1, M3, M4** with 1 mL each → 20 mL at OD ≈ 0.02. **M2 gets nothing.** Start the experiment on all 5 for CSV logging. |
+| 09:30 | **Inoculate M0, M1, M3, M4** with **500 µL** each → OD ≈ 0.011. **M2 gets nothing.** Start the experiment on all 5 for CSV logging. |
 | ~13:00 | **L1** — first reactor reaches OD 0.2 → scan all 5 |
 | ~14:10 | **L2 — OD 0.4, the primary point** → scan all 5 |
 | ~15:00 | **L3** — OD 0.6 → scan all 5. **Stop here.** |
@@ -310,6 +310,16 @@ server restart, so blank *after* the restart in §6, and re-blank if you restart
 With sterile media in the vial at 37 °C and **stir ON** (unstirred laser reads vary ~15%,
 stirred <3%), take ~5 `MeasureOD` reads per reactor, average the reported `OD0['raw']`, then:
 
+**Space the reads ≥5 s apart, and never fire them in a tight loop.** `/MeasureOD/` is
+fire-and-forget (`run_background`) and a read settles in ~1.6 s. Fire faster than that and
+overlapping `measure_od` threads corrupt each other — one thread switches `LASER650` off between
+another's switch-on and its read, so that thread reads darkness and reports `raw` ≈ 0 with
+`valid=1` (the read succeeded; the laser just wasn't on). Sampling `/getSysdata/` too soon also
+returns the *previous* read, which shows up as suspiciously identical consecutive values. Both
+failure modes silently poison the mean you are about to blank against. Verified 2026-08-11:
+5 reads at 8 s spacing give CV 0.12–0.14% on raw transmission; the same 5 at 1 s spacing gave
+three zeros and two duplicates.
+
 ```bash
 # knownOD=0 sets OD0.target = the raw you pass, i.e. zero-at-blank.
 ssh ChiBio 'curl -s -X POST http://192.168.7.2:5000/CalibrateOD/OD0/M0/<mean_raw>/0'
@@ -319,9 +329,19 @@ ssh ChiBio 'curl -s -X POST http://192.168.7.2:5000/CalibrateOD/OD0/M0/<mean_raw
 ### 7.2 Inocula
 
 Pellet each overnight, **wash once in fresh M9**, resuspend (removes spent-media fluorophores).
-Normalize all three to the **same OD** on the benchtop spectrophotometer, then put 1 mL into
-19 mL — from an OD ~0.45 washed stock that gives OD ≈ 0.022 in the 20 mL reactor. Split the WT
+Normalize all three to the **same OD** on the benchtop spectrophotometer, then put **500 µL into
+20 mL** — from an OD ~0.45 washed stock that gives OD ≈ **0.011** in the reactor. Split the WT
 flask across its two slots (M0 and M4) so the replicate is a true replicate.
+
+**Why 1:40 and not 1:20 or 1:200** (decided 2026-08-11). A more dilute start does not buy a
+longer *observable* curve: the detector is quiet (CV 0.12–0.14% on raw transmission, ≈0.001 OD)
+but a stirred culture varies ~3% read-to-read, so the practical floor is **~0.02 OD**. Below
+that you log noise. Starting at OD 0.0022 (100 µL) would spend ~4.4 h beneath the floor and add
+~4.6 h to the climb — time the unaerated vial spends losing O₂, which suppresses FP maturation
+and raises flavin autofluorescence, both against the signal. 500 µL starts just under the floor,
+captures every doubling the hardware can resolve, and reaches the OD 0.4 primary ladder point in
+~8 h at µ ≈ 0.5 h⁻¹. It is also a far more reproducible pipetting volume than 100 µL across the
+two WT slots the subtraction rests on.
 
 ### 7.3 Scan — capture the EEM, not the CSV
 
@@ -342,6 +362,18 @@ done
 Scans are strictly serial — one I2C bus, one global lock — so a ladder point is ~7 min for
 five reactors, during which cultures grow ~8%. That's why you record per-reactor OD and
 subtract against the nearest-in-time control.
+
+**A scan corrupts the scanned reactor's concurrent OD row — filter it out.** The scan and
+`runExperiment`'s own measurement cycle both drive LEDs/laser on the same reactor, and the
+global lock serializes individual I2C transactions but *not* the on→read→off sequences. So the
+scan can switch the laser off between the cycle's switch-on and its read, and that cycle logs
+`od_transmission_raw = 0`, `od_measured = 0`, with `od_spread` blowing up (1.12 vs a normal
+~0.005). **It is not flagged**: the read succeeded, so `valid` stays 1 and the cell is `0`, not
+`NaN` — there is no validity column in the CSV to catch it. Observed 2026-08-11 on M0 during the
+t0 scan; it recovered on the very next cycle. Expect ~1 bad row per reactor per ladder point.
+
+    # analysis: drop scan-collided rows
+    df = df[df.od_transmission_raw != 0]
 
 ### 7.4 FP logging channel
 
