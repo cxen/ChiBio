@@ -523,8 +523,8 @@ def runExperiment(M, placeholder):
                 #experiment watchdog judges on this, the one signal that only a running loop
                 #can produce. MONOTONIC, not wall-clock: this board has no battery-backed RTC,
                 #so an NTP step after boot would otherwise read as a stall on every reactor.
-                sysData[M]['Experiment']['lastCycleMonotonic']=time.monotonic()
-                sysData[M]['Experiment']['stalled']=0
+                from app import stamp_cycle_complete
+                stamp_cycle_complete(M)
                 addTerminal(M,'Cycle ' + str(sysData[M]['Experiment']['cycles']) + ' Complete')
             except Exception:
                 # A cycle must never be able to kill the loop silently. Before this, any

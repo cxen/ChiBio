@@ -1079,15 +1079,35 @@ def _restart_stalled_experiment(M, silent_for):
         set_output_on_sync(M, 'Stir', 1)
     except Exception:
         logger.exception('Could not re-assert stir on %s during restart', M)
-    sysData[M]['Experiment']['lastCycleMonotonic'] = time.monotonic()  # grace period before re-judging
+    sysData[M]['Experiment']['lastCycleMonotonic'] = liveness_now()  # grace period before re-judging
     sysDevices[M]['Experiment']['running'] = 1
     sysDevices[M]['Experiment']['thread'] = Thread(target=runExperiment, args=(M, 'placeholder'))
     sysDevices[M]['Experiment']['thread'].setDaemon(True)
     sysDevices[M]['Experiment']['thread'].start()
 
 
+def liveness_now():
+    """The clock the liveness stamps are taken on.
+
+    MUST be the same clock runExperiment stamps `lastCycleMonotonic` with. Keeping it in one
+    named place is not ceremony: mixing time.time() here with time.monotonic() there yielded
+    an age of 1,786,529,500 s (their offset), which flagged every reactor stalled forever.
+    """
+    return time.monotonic()
+
+
+def stamp_cycle_complete(M):
+    """Record that a cycle finished. The ONLY place a liveness stamp is written.
+
+    Paired with classify_experiment_liveness(liveness_now()) so the stamp and the comparison
+    cannot end up on different clocks -- which is exactly what went wrong once.
+    """
+    sysData[M]['Experiment']['lastCycleMonotonic'] = liveness_now()
+    sysData[M]['Experiment']['stalled'] = 0
+
+
 def classify_experiment_liveness(now):
-    """Split the running reactors into (running, stalled) at wall-clock `now`.
+    """Split the running reactors into (running, stalled) at `now`, a liveness_now() reading.
 
     Pure and side-effect free so the rule can be tested off-device; the caller owns the
     policy of what to do with the split.
@@ -1126,7 +1146,7 @@ def _experiment_watchdog():
     while True:
         time.sleep(_EXPERIMENT_WATCHDOG_PERIOD)
         try:
-            now = time.time()
+            now = liveness_now()
             running, stalled = classify_experiment_liveness(now)
             if not stalled:
                 for M in running:

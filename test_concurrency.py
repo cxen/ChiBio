@@ -120,6 +120,34 @@ def test_watchdog_ignores_idle_and_never_started():
     print('PASS watchdog ignores idle, absent and not-yet-cycled reactors')
 
 
+def test_liveness_stamp_and_comparison_use_one_clock():
+    # Regression, found on hardware: the cycle stamped time.monotonic() while the watchdog
+    # compared against time.time(). Their offset (1,786,529,500 s) made every reactor read as
+    # permanently stalled. The other watchdog tests cannot catch this -- they pass a synthetic
+    # `now` alongside a synthetic stamp, so the two agree by construction. This one exercises
+    # the REAL clock on both sides.
+    import chibio_experiment  # noqa: F401  (same import path runExperiment uses)
+    for M in ['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7']:
+        _set_experiment(M, 0, 0, 0, 0.0)
+    M = 'M0'
+    _set_experiment(M, 1, 1, 5, 0.0)
+    app.stamp_cycle_complete(M)                        # the exact call a finished cycle makes
+    # Pin the clock explicitly, so swapping it for time.time() fails here rather than on the rig.
+    assert abs(sysData[M]['Experiment']['lastCycleMonotonic'] - time.monotonic()) < 1.0, \
+        'the cycle stamp is not on time.monotonic()'
+    running, stalled = app.classify_experiment_liveness(app.liveness_now())
+    assert running == [M], running
+    assert stalled == [], (
+        'a reactor that just completed a cycle reads as stalled -- the stamp and the '
+        'comparison are on different clocks')
+
+    # And a genuinely old stamp must still be caught.
+    _set_experiment(M, 1, 1, 5, app.liveness_now() - 400)
+    _, stalled = app.classify_experiment_liveness(app.liveness_now())
+    assert stalled == [M], 'a genuinely stale reactor was not flagged'
+    print('PASS liveness stamp and comparison share one clock')
+
+
 def test_watchdog_distinguishes_all_stalled_from_one_dead():
     # INVARIANTS 5: every reactor stalling at once is a bus/worker fault, not a dead thread.
     # Auto-recovery once restarted all five into fresh unblanked CSVs by missing this.
@@ -370,6 +398,7 @@ if __name__ == '__main__':
     test_mutex_is_per_reactor()
     test_watchdog_flags_only_the_dead_reactor()
     test_watchdog_ignores_idle_and_never_started()
+    test_liveness_stamp_and_comparison_use_one_clock()
     test_watchdog_distinguishes_all_stalled_from_one_dead()
     test_restart_rearms_running_and_restores_stir()
     test_never_starts_a_second_loop_over_a_live_thread()
