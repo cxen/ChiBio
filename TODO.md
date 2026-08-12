@@ -36,9 +36,33 @@ a restart wipes RAM-only experiment state.
 ### Next actions, in priority order
 
 **The code backlog below is now cleared** (2026-08-12 evening) — all four live-run defects, all
-four audit defects, and a soft-lock defect found during the work. Deployed to
-`/root/chibio-staging`, device self-test **16/16**, off-device suite **13/13**. What remains is
-bench work plus the diagnosis that instrumentation now has to catch in the act.
+four audit defects, and a soft-lock defect found during the work. Staging = `8728610`, device
+self-test **16/16**, off-device suite **13/13**. What remains is bench work plus the diagnosis
+that instrumentation now has to catch in the act.
+
+**Adversarial hardware test, 2026-08-12 22:12–22:41 (4 reactors, real cultures, FP1 on at x10).**
+A `FluorescenceScan` was fired at `M0` **timed to hit mid-measurement** (poll `OD['Measuring']`,
+fire on the transition) so every scan was a guaranteed collision — the 2026-08-11 scenario, on
+demand rather than by luck. Two runs, 6 collisions total:
+
+| | Run 0 (before) | This test (after) |
+|---|---|---|
+| Experiment thread killed | yes, once (M3, 90 min lost) | **no** — cycles advanced 3→6→9→12 through every collision |
+| Corrupt OD rows (`raw==0`, unflagged) | ~1 per reactor per scan | **0 of 61 rows** |
+| FP rows lost to the saturation guard at x10 | 49% of M4 FP1, 57% of M0 FP2 | **0** — autorange stepped x10 down to x6–x9, bases 10.7k–50.8k |
+| Server responsiveness | soft-locked under rapid commands | worst poll **0.175 s**; 25 back-to-back POSTs in 0.56 s |
+
+The scan now *waits* instead of corrupting: the instrumentation logged
+`measurement mutex on M0 waited 20.3s (contended)` — one cycle's measurement block — which is
+the mutex doing exactly its job. Raw FP emission columns carried real counts (342–1389).
+
+**The test also found a bug the unit tests could not.** The cycle stamped `time.monotonic()`
+while the watchdog compared against `time.time()`; their offset (1,786,529,500 s) flagged every
+reactor stalled forever and logged an error per reactor every 20 s. Nothing was restarted only
+because the `is_alive()` guard refused. The unit tests passed a synthetic `now` alongside a
+synthetic stamp, so the two agreed by construction. Fixed in `8728610` by routing both sides
+through one named clock (`liveness_now()` / `stamp_cycle_complete()`), with a test that calls
+the real stamp and asserts the clock. **Re-verified: `stalled=0` throughout, 0 false alarms.**
 
 1. **The `WORKER TIMEOUT` of 2026-08-12 09:30:52 is still unexplained, but both documented
    suspects are now refuted by measurement on the device:**
