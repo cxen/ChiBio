@@ -5,6 +5,53 @@ Source: post-refactor evaluation (`original_app.py` monolith vs `app.py` + `chib
 
 Ranking: **P1** = real bug / correctness · **P2** = robustness or security hardening · **P3** = cleanup / hygiene · **P4** = optional, larger.
 
+---
+
+## ▶ START HERE — state of the rig, 2026-08-12
+
+**Read `INVARIANTS.md` first.** It is the operational rulebook: what happens when you touch
+hardware, how to write watcher scripts that don't kill their own shell, the single-owner rule,
+and which readings lie. Nearly every rule in it was learned by breaking something on 2026-08-11/12.
+
+**Hardware: four reactors, not five.** The **M4 reactor unit is faulty and retired** — it pulls
+down the shared I²C bus and prevents the whole rig from booting. Localised to the unit itself
+(cable, connector, controller channel and power each excluded; the fault followed the unit to
+port T7). M0–M3 verified healthy, `device_selftest.py` **16/16**. Fault report ready to send:
+`docs/m4-fault-report-labmaker.md`, email draft `docs/m4-email-draft.md`.
+
+**Run 0 is done.** 13 h, five reactors, WT in four plus a sterile blank. Archived and
+md5-verified to `~/chibio-run0-2026-08-11/`. Full narrative, timings and results in
+`labnotes.md`. Headline results:
+- **Chi.Bio ↔ cuvette OD scale = 2.81 ± 0.22 (CV 7.7%)** across M0/M1/M4 at one density.
+  Provisional — the 6–8 point dilution series (§7.1 of the audit) is still the deciding test.
+- µ ≈ 0.78–0.84 /h (t_d 50–53 min) on the two clean reactors; **M0 grew at half that and its
+  cause is unexplained** — see `INVARIANTS.md` §6 for two mechanisms already ruled out.
+- The FP gain change (512× → 32×) took the CLEAR base from 34–60k to 3.5–8.5k and **eliminated
+  all NaN losses** (previously 24–57% of rows).
+
+**Nothing is running.** Server up, all outputs off. The whole code backlog below is therefore
+**unblocked** — it was blocked all of 2026-08-11/12 because every fix needs a server restart and
+a restart wipes RAM-only experiment state.
+
+### Next actions, in priority order
+
+1. **Diagnose the unexplained `WORKER TIMEOUT` of 2026-08-12 09:30:52.** Five minutes
+   unresponsive at `--timeout 300` with no fluorescence scans running — a different pattern from
+   the 20:12:57 one that the timeout raise fixed. Until it is understood, **any long run risks a
+   silent state-wipe**. Suspects: memory pressure (483 MB total, `sysData` accumulates) and the
+   full-config `.txt` dump `runExperiment` writes every 10 cycles while holding the bus lock.
+2. **The four defects found during the live run** (below, under "Found during the live Run 0").
+   The scan-kills-experiment-thread one is the most serious defect currently known.
+3. **The four audit defects** (below, under "Found by the literature/code audit").
+4. **Run 1 slot design for four reactors.** The runbook is scoped for five and does not fit:
+   WT at n=2 plus the sterile blank take three slots, leaving one FP arm instead of two.
+   Consider **two sequential four-reactor runs** (WT×2 + sterile + mCherry, then WT×2 + sterile +
+   sfGFP) — keeps every non-negotiable, costs a day. Do not put a load-bearing arm on M0 until
+   its slow growth is explained.
+5. **Fill the ⬜ gaps in `labnotes.md`** — needs the operator, not an agent.
+
+---
+
 > The two biggest robustness issues are already fixed in this fork (persistent loops replacing per-iteration thread re-spawning; `try/finally` around the I2C/CSV lock). Everything below is what remains.
 
 ## P1 — Bugs
@@ -21,6 +68,13 @@ From `docs/chibio-usage-literature-review.md` rev. 2 §4.1 and §1.4. **Not yet 
 - [ ] **The chip reports saturation in hardware and we have the read commented out.** `chibio_optics.py:72` (`STATUS2`, 0xA3). **`ASAT_ANALOG` fires *before* the digital counter fills**, so no threshold on the returned number — including `_FP_BASE_NEAR_SATURATION` — can ever see it, and that is exactly the regime a 90° scatter geometry with a bright LED at 512× gain lives in. `ASTATUS` (0x94) returns the saturation flag **and the gain actually applied**, latched with the data, in one byte. Fold into the existing `valid` flag rather than replacing the heuristic (belt and braces). Also worth a comment: `_gain_multiplier`'s nominal `0.5·2ⁿ` carries ~7% systematic error across the gain range (512× is **7.75×** the 64× response, ±6% part-to-part), which matters for gain-normalising an EEM; and the band labels are ~5 nm below the ams typicals, so the Stokes-shift rule should carry ±10 nm.
 - [ ] **`PumpModulation` issues duplicate `setPWM` off-pairs.** `chibio_experiment.py:26–29` and `:59–62` are verbatim duplicates — 4 redundant I²C transactions per pump per cycle, each taking the global `lock` and switching the mux. With 5 reactors × 4 pumps that is real pressure on the resource whose contention causes the "Failed to recover multiplexer" crashes. One-line fix, published upstream as `alje-lab@0d395e5`.
 - [ ] **`PumpModulation` pump timing is biased and 10 ms-quantised.** `chibio_experiment.py:34/55/65–67` uses `datetime.now()` + `time.sleep(Ontime)` + `round(…,2)`. `time.sleep` overshoots badly at short durations on this hardware, so every dilution volume carries a **systematic positive bias** — a quiet quantitative error in the turbidostat, i.e. in the dilution rate growth rates are computed from. Fix (`alje-lab@5d7516e`): `time.perf_counter()`, `round(…,5)`, and a spin-wait for `Ontime < 0.5 s`; plus log the achieved on-time in ms (`59fdf0c`).
+### Found during the live Run 0, 2026-08-11 evening (observed on hardware, not from the corpus)
+
+- [ ] **A `FluorescenceScan` can kill the scanned reactor's experiment thread. Most serious defect currently known.** Observed on M3: its last server-log activity was 22:22:17, during its own ladder scan; `Experiment['cycles']` then froze at 110 while M0/M1/M2/M4 ran on to 155 — **90 minutes producing no data**. Worse than the lost rows: the thread died just after `runExperiment` turned **stir OFF** for a measurement (`chibio_experiment.py:324`), and nothing restores it, so **M3 sat unstirred for ~30 min**; and `OD['current']` froze at its last computed value (1.681), which is *not* flagged — it reads as a live, plausible, stable number with a low `od_spread`. That stale value then drove a supervisor's ladder trigger over all three thresholds at once. Recovered without a server restart by `POST /Experiment/0/M3` then `/Experiment/1/M3` (cycles != 0, so `startTime` is preserved and it appends to the same CSV) **plus an explicit stir re-assert** — `ExperimentStartStop` re-enables Thermostat but not Stir. Needed: find why the thread dies (start with the scan/cycle interaction below), reset `sysDevices[M]['Experiment']['running']` in a `finally`, restore stir on restart, and **timestamp every reading so a frozen `OD['current']` is detectable** (§6.2 freshness — this is a concrete instance of it).
+- [ ] **A `FluorescenceScan` corrupts the scanned reactor's concurrent OD row.** Same root cause, milder symptom. Scan and cycle both drive LEDs/laser on one reactor; the global `lock` serializes individual I²C transactions but *not* the on→read→off sequences, so the scan switches the laser off between the cycle's switch-on and its read. That cycle logs `od_transmission_raw = 0`, `od_measured = 0`, `od_spread` ~1.1 against a normal ~0.005 — **and `valid` stays 1**, because the read succeeded. Not flagged anywhere; the analysis filter is `od_transmission_raw != 0`. Documented in the runbook §7.3. Proper fix is a per-reactor mutex around the whole measurement sequence, not just the bus.
+- [ ] **FP gain must be planned against the density the run will reach, not its starting density.** At the runbook's `x10` (index 10 = 512×) the CLEAR base climbed from ~6–11k at inoculation to 34–60k within two hours, and the 60000 near-saturation guard NaN'd **49% of M4's FP1 rows, 57% of M0's FP2, and 24–28% of all three on M1**. Autorange does not rescue this: it only steps down on an *exact* 65535, so the whole 60000–65534 band is lost. The sterile M2 lost nothing, confirming cell scatter as the cause. Dropping to index 6 (32×) mid-run took the base to 3.5–8.5k. Options: default the assist to a lower starting gain, make autorange trigger on the guard threshold rather than 65535, or expose a headroom-aware recommendation. Note the ratio is gain-invariant, so a mid-run gain change is safe for comparability — and `SetFPMeasurement` already logs it to the events sidecar.
+- [ ] **Correction to the audit's §4.3.1 exposure.** Raw FP emissions *are* recoverable from the current CSV after all: `FP*_base` is logged as **raw counts**, `FP*_gain_used` per row, and the emissions are ratios of that base — so `emit_raw = emit_ratio × base` at a known gain. Matched-control subtraction **can** be retro-fitted to this dataset. The raw-emit column below is still worth landing (precision, and not making every analyst rediscover the identity), but it is not data-losing.
+
 - [ ] **Raw OD and raw FP emissions are computed and discarded.** Highest value-per-line change in the audit. `OD0['raw']` → an `od_raw` CSV column, and the FP emission counts *before* the Clear division → `FP{1,2,3}_emit{1,2}_raw`. Combined with a RAM-only blank ([[od-blanking]]), a mid-run restart currently changes the meaning of the OD column with no way to undo it; and matched-control subtraction **cannot be retro-fitted to data already collected** while only ratios are stored. Both are this fork's documented 2–3 place edit (`initialise()` + `csvData()` + `downsample()`) and compose with the existing `logEvent` blank records. Prior art: `zoltuz@imperial_GBS`.
 
 ## P2 — Robustness / security
