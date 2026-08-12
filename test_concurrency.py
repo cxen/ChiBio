@@ -392,6 +392,61 @@ def test_negative_corrected_transmission_cannot_raise():
     print('PASS negative dark-corrected transmission returns 0 instead of raising')
 
 
+def test_characterise_refuses_during_an_experiment():
+    # The sweep drives LASER650 from 0 to full, so no OD reading taken during it is
+    # meaningful -- a concurrent cycle logged OD 9.99 while the sweep sat near zero power.
+    # The mutex makes each read atomic but cannot hold a shared power target still between
+    # them, so the routine has to decline rather than corrupt the run.
+    M = 'M0'
+    sysData[M]['present'] = 1
+    sysData[M]['Experiment']['ON'] = 1
+    try:
+        client = app.application.test_client()
+        r = client.post('/CharacteriseDevice/%s/C1' % M)
+        assert r.status_code == 409, 'expected refusal, got %s' % r.status_code
+    finally:
+        sysData[M]['Experiment']['ON'] = 0
+    print('PASS characterisation refuses to run during an experiment')
+
+
+def test_characterise_restores_power_targets():
+    # Left unrestored, every LED and the laser sit at 1.0 (the last level swept). The blank
+    # was taken at LASER650=0.5, so OD silently rescales -- measured 3.17 -> 2.60 on M0.
+    import app as _app
+    M = 'M1'
+    sysData[M]['present'] = 1
+    sysData[M]['Experiment']['ON'] = 0
+    swept = ['LEDA', 'LEDB', 'LEDC', 'LEDD', 'LEDE', 'LEDF', 'LEDG', 'LASER650']
+    before = {}
+    for i, item in enumerate(swept):
+        sysData[M][item]['target'] = 0.5 if item == 'LASER650' else 0.1 + i * 0.01
+        before[item] = sysData[M][item]['target']
+
+    orig = (_app.set_output_on_sync, _app.set_output_target_sync, _app.get_spectrum,
+            _app.addTerminal)
+    calls = []
+
+    def fake_target(m, item, value):
+        sysData[m][item]['target'] = float(value)
+        calls.append((item, float(value)))
+
+    _app.set_output_on_sync = lambda m, item, force: None
+    _app.set_output_target_sync = fake_target
+    _app.get_spectrum = lambda m, gain: None
+    _app.addTerminal = lambda m, t: None
+    try:
+        _app.CharacteriseDevice2(M)
+    finally:
+        (_app.set_output_on_sync, _app.set_output_target_sync, _app.get_spectrum,
+         _app.addTerminal) = orig
+
+    assert any(v == 1.0 for _, v in calls), 'the sweep did not actually run'
+    for item in swept:
+        assert sysData[M][item]['target'] == before[item], \
+            '%s left at %s, expected %s' % (item, sysData[M][item]['target'], before[item])
+    print('PASS characterisation restores every power target it swept')
+
+
 if __name__ == '__main__':
     test_mutex_serializes_sequences()
     test_mutex_is_reentrant()
@@ -408,4 +463,6 @@ if __name__ == '__main__':
     test_distinct_measurements_are_not_dropped()
     test_background_threads_are_capped()
     test_negative_corrected_transmission_cannot_raise()
+    test_characterise_refuses_during_an_experiment()
+    test_characterise_restores_power_targets()
     print('\nAll concurrency tests passed.')

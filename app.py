@@ -810,11 +810,24 @@ def SetLightActuation(Excite):
 def CharacteriseDevice(M,Program): 
     # THis umbrella function is used to run the actual characteriseation function in a thread to prevent GUnicorn worker timeout.
     Program=str(Program)
+    M=str(M)
+    if (M=="0"):
+        M=sysItems['UIDevice']
+    # Refuse while an experiment is running on this reactor. The sweep drives LASER650 across
+    # its whole power range, including 0, so no OD reading taken during it means anything --
+    # measured 2026-08-12, a concurrent cycle logged OD 9.99 while the sweep sat near zero
+    # power. The per-reactor mutex makes each read atomic but cannot make a shared power
+    # target hold still between them. This is a calibration routine; it needs the reactor.
+    if (sysData[M]['Experiment']['ON']==1):
+        logger.error('Refusing to characterise %s: an experiment is running. The power sweep '
+                     'would corrupt its OD readings.', M)
+        addTerminal(M,'Characterisation refused - stop the experiment first')
+        return('',409)
     if (Program=='C1'):
         cthread=Thread(target = CharacteriseDevice2, args=(M,))
         cthread.setDaemon(True)
         cthread.start()
-    
+
     return('',204)
         
         
@@ -843,27 +856,41 @@ def CharacteriseDevice2(M):
     powerlevels=[0,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
     items= ['LEDA','LEDB','LEDC','LEDD','LEDE','LEDF','LEDG','LASER650']
     gains=['x4','x4','x4','x4','x4','x4','x4','x1']
-    gi=-1
-    for item in items:
-        gi=gi+1
-        for power in powerlevels:
-            # Same collision class as the FluorescenceScan: a drive-output -> read -> off
-            # sequence on one reactor. Without the mutex, a concurrent experiment cycle
-            # switches this LED off between the switch-on and the read (and vice versa),
-            # which is unflagged in both directions. 160 sequences per reactor makes this the
-            # heaviest such loop in the codebase, so it is the last place to leave unguarded.
-            with measurement_sequence(M):
-                set_output_target_sync(M,item,power)
-                set_output_on_sync(M,item,1)
-                try:
-                    get_spectrum(M,gains[gi])
-                finally:
-                    set_output_on_sync(M,item,0)
-            print(item + ' ' + str(power))
-            for band in bands:
-                result[item][band].append(int(sysData[M]['AS7341']['spectrum'][band]))
-            addTerminal(M,'Measured Item = ' + str(item) + ' at power ' + str(power))
-            time.sleep(0.05)
+    # Remember every power target the sweep is about to overwrite. Without this the routine
+    # leaves all of them at 1.0 (the last level swept), which silently rescales OD: the blank
+    # was taken at LASER650=0.5, so the reactor keeps reporting against a laser at twice that
+    # power until someone re-blanks or restarts. Measured 2026-08-12: M0 read OD 3.17 before
+    # characterisation and 2.60 after, with nothing to indicate why.
+    savedTargets={item: sysData[M][item]['target'] for item in items}
+    try:
+        gi=-1
+        for item in items:
+            gi=gi+1
+            for power in powerlevels:
+                # Same collision class as the FluorescenceScan: a drive-output -> read -> off
+                # sequence on one reactor. Without the mutex, a concurrent experiment cycle
+                # switches this LED off between the switch-on and the read (and vice versa),
+                # which is unflagged in both directions. 160 sequences per reactor makes this the
+                # heaviest such loop in the codebase, so it is the last place to leave unguarded.
+                with measurement_sequence(M):
+                    set_output_target_sync(M,item,power)
+                    set_output_on_sync(M,item,1)
+                    try:
+                        get_spectrum(M,gains[gi])
+                    finally:
+                        set_output_on_sync(M,item,0)
+                print(item + ' ' + str(power))
+                for band in bands:
+                    result[item][band].append(int(sysData[M]['AS7341']['spectrum'][band]))
+                addTerminal(M,'Measured Item = ' + str(item) + ' at power ' + str(power))
+                time.sleep(0.05)
+    finally:
+        # Restore unconditionally: a characterisation that dies partway must not leave the
+        # reactor's OD laser at an arbitrary swept power.
+        for item in items:
+            set_output_on_sync(M,item,0)
+            set_output_target_sync(M,item,savedTargets[item])
+        addTerminal(M,'Output power levels restored after characterisation')
                 
     
     filename = 'characterisation_data_' + M + '.txt'
