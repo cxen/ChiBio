@@ -9,7 +9,8 @@ import logging
 from flask import Flask, render_template, jsonify
 from chibio_auth import init_auth
 from chibio_experiment import PumpModulation, RegulateOD, Thermostat, Zigzag, runExperiment
-from chibio_hardware import I2CCom, get_i2c_device, setPWM, setup_watchdog, start_stall_watchdog
+from chibio_hardware import (I2CCom, get_i2c_device, measurement_sequence, setPWM,
+                             setup_watchdog, start_stall_watchdog)
 from chibio_optics import adc_full_scale, get_light, get_spectrum
 from chibio_state import sysData, sysDevices, sysItems
 import chibio_sim
@@ -341,13 +342,20 @@ def initialise(M):
         # no FP3 LEDE->LEDH remap). Saturation is now detectable, so say so loudly rather
         # than returning a confident wrong answer.
         detectCeiling=adc_full_scale(10)
+        # Both detections are baseline-then-pulse comparisons, so anything that flashes a
+        # light on this reactor in between changes the answer -- and the answer decides which
+        # excitation panel the whole board uses. Harmless at boot (no threads yet), but
+        # initialise() is also reachable at runtime via /ExperimentReset.
         # Now we will detect LED version First checking for version 2
-        out=get_light(M,['nm583'],10,10) #Measure with maximum gain (10) and for short period.
-        Baseline=out[0]
-        set_output_on_sync(M,'LEDH',1) #Turn on LEDH at default level - should only be present in version 2
-        out=get_light(M,['nm583'],10,10)
-        NewLevel=out[0]
-        set_output_on_sync(M,'LEDH',0) #Turn off LEDH at default level - should only be present in version 2
+        with measurement_sequence(M):
+            out=get_light(M,['nm583'],10,10) #Measure with maximum gain (10) and for short period.
+            Baseline=out[0]
+            set_output_on_sync(M,'LEDH',1) #Turn on LEDH at default level - should only be present in version 2
+            try:
+                out=get_light(M,['nm583'],10,10)
+                NewLevel=out[0]
+            finally:
+                set_output_on_sync(M,'LEDH',0) #Turn off LEDH at default level - should only be present in version 2
         if (Baseline>=detectCeiling or NewLevel>=detectCeiling):
             logger.error('LED version detection on %s saturated at ISteps=10 (baseline %d, '
                          'pulsed %d, full scale %d) - the V2 test is unreliable here',
@@ -356,12 +364,15 @@ def initialise(M):
             V2_Present = 1
 
         # Now we will detect for Version 1
-        out=get_light(M,['nm583'],10,10) #Measure with maximum gain (10) and for short period.
-        Baseline=out[0]
-        set_output_on_sync(M,'LEDG',1) #Turn on LEDG at default level - should only be present in version 1
-        out=get_light(M,['nm583'],10,10)
-        NewLevel=out[0]
-        set_output_on_sync(M,'LEDG',0) #Turn off LEDG at default level - should only be present in version 1
+        with measurement_sequence(M):
+            out=get_light(M,['nm583'],10,10) #Measure with maximum gain (10) and for short period.
+            Baseline=out[0]
+            set_output_on_sync(M,'LEDG',1) #Turn on LEDG at default level - should only be present in version 1
+            try:
+                out=get_light(M,['nm583'],10,10)
+                NewLevel=out[0]
+            finally:
+                set_output_on_sync(M,'LEDG',0) #Turn off LEDG at default level - should only be present in version 1
 
         if (NewLevel>Baseline*3+20):
             V1_Present = 1
@@ -836,10 +847,18 @@ def CharacteriseDevice2(M):
     for item in items:
         gi=gi+1
         for power in powerlevels:
-            set_output_target_sync(M,item,power)
-            set_output_on_sync(M,item,1)
-            get_spectrum(M,gains[gi])
-            set_output_on_sync(M,item,0)
+            # Same collision class as the FluorescenceScan: a drive-output -> read -> off
+            # sequence on one reactor. Without the mutex, a concurrent experiment cycle
+            # switches this LED off between the switch-on and the read (and vice versa),
+            # which is unflagged in both directions. 160 sequences per reactor makes this the
+            # heaviest such loop in the codebase, so it is the last place to leave unguarded.
+            with measurement_sequence(M):
+                set_output_target_sync(M,item,power)
+                set_output_on_sync(M,item,1)
+                try:
+                    get_spectrum(M,gains[gi])
+                finally:
+                    set_output_on_sync(M,item,0)
             print(item + ' ' + str(power))
             for band in bands:
                 result[item][band].append(int(sysData[M]['AS7341']['spectrum'][band]))
