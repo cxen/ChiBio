@@ -293,7 +293,13 @@ def initialise(M):
         sysData[M][FP]['spread']=0.0  #max-min of the replicate FP base reads.
 
     #Fluorescence-assist scan result (excitation-emission matrix + recommended FP settings).
-    sysData[M]['FluorescenceScan']={'matrix':{}, 'recommendation':None, 'mode':'', 'status':'', 'bands':[]}
+    sysData[M]['FluorescenceScan']={'matrix':{}, 'recommendation':None, 'mode':'', 'status':'', 'bands':[], 'referenced':0}
+    #A matched NON-fluorescent scan to subtract before recommending. Without one the assist
+    #reads biomass: measured 2026-08-13, a sterile tube of medium and three WT cultures all
+    #returned the same confident LEDI(550)->nm583 pick, with the reported "signal" tracking
+    #turbidity. RAM-only like the OD blank -- re-set it after a restart.
+    sysData[M]['FluorescenceReference']={'from':'', 'time':''}
+    sysDevices[M]['fluorReferenceMatrix']=None  #the EEM itself: bulk, and the UI never reads it
 
     sysData[M]['ThermometerInternal']['current']=0.0
     sysData[M]['ThermometerExternal']['current']=0.0
@@ -576,6 +582,16 @@ def FluorescenceScan(M,mode):
     from chibio_fluorescence import fluorescence_scan
     run_background(fluorescence_scan, M, str(mode))
     return ('', 204)
+
+
+@application.route("/SetFluorescenceReference/<M>/<source>",methods=['POST'])
+def SetFluorescenceReference(M,source):
+    #Adopt <source>'s last completed scan as M's matched non-fluorescent reference, so the
+    #assist recommends on the residual instead of on raw counts dominated by scatter.
+    #<source>: a device ('M2'), 'self', or 'clear'. Synchronous -- it is pure state, no bus.
+    from chibio_fluorescence import set_fluorescence_reference
+    ok = set_fluorescence_reference(M, source)
+    return ('', 204) if ok else ('no completed scan on that device', 409)
 
 
 # ponytail: cross-request ordering race. SetOutputTarget/SetOutputOn run as

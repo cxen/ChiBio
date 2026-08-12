@@ -122,3 +122,95 @@ assert all(row['_valid'] == 1 for row in matrix.values()), matrix   # dropout wa
 assert _calls['n'] > 2 * len(F.excitation_leds(M)), 'a retry must have added at least one extra read'
 
 print("PASS: dead reads (valid=0) are skipped by the recommender; the scan retries a transient dropout and every EEM row it keeps is valid")
+
+# --- F) matched non-fluorescent reference subtraction (the real-rig failure mode) ---
+# Built from the four EEMs measured on the rig 2026-08-13, when every reactor held
+# non-fluorescent material: three WT cultures (M0/M3 at one density, M1 ~1.8x denser) and a
+# sterile-medium blank (M2). The recommender handed ALL FOUR the same confident
+# LEDI(550)->nm583/nm620 pick, with the "signal" tracking turbidity (37.7 / 269.6 / 275.9 /
+# 516.2). Those are four true negatives, so any recommendation on them is a false positive.
+def rig_eem(scale):
+    # LEDI row as measured on M0, scaled -- the 550nm LED is 105nm FWHM, so its own red tail
+    # lands squarely in nm583/nm620 and dominates every non-fluorescent sample.
+    return {
+        'LEDB': mkrow(457, nm410=145.3*scale, nm440=1152.1*scale, nm470=101.7*scale,
+                      nm510=30.8*scale, nm583=39.6*scale, nm620=40.6*scale),
+        'LEDD': mkrow(523, nm470=151.2*scale, nm510=722.6*scale, nm550=63.3*scale,
+                      nm583=18.8*scale, nm620=17.4*scale),
+        'LEDI': mkrow(550, nm510=299.5*scale, nm550=166.7*scale, nm583=269.6*scale,
+                      nm620=175.2*scale, nm670=54.2*scale),
+        'LEDH': mkrow(600, nm550=77.6*scale, nm583=272.3*scale, nm620=212.2*scale, nm670=53.2*scale),
+        'LEDF': mkrow(623, nm583=274.7*scale, nm620=948.8*scale, nm670=16.2*scale),
+    }
+
+wt = rig_eem(1.0)
+wt_denser = rig_eem(1.8)
+
+# Without a reference the pick is the measured false positive, and it must say so.
+r = recommend_fp_settings(wt)
+assert r is not None and (r['excite'], r['emit1']) == ('LEDI', 'nm583'), r
+assert r['confidence'] == 'unreferenced', r
+assert 'warning' in r and 'sterile' in r['warning'].lower(), r
+
+# With a matched non-fluorescent reference, the true answer (no fluorophore) is returned.
+assert recommend_fp_settings(wt, reference=rig_eem(1.0)) is None, 'WT vs identical WT'
+assert recommend_fp_settings(wt_denser, reference=wt) is None, 'WT vs WT across a 1.8x density gap'
+assert recommend_fp_settings(wt, reference=wt_denser) is None, 'and in the other direction'
+
+# The scale is fitted, not assumed: a 1.8x denser sample must recover ~1.8.
+from chibio_fluorescence import subtract_reference
+resid, scale, background = subtract_reference(wt_denser, wt)
+assert 1.7 < scale < 1.9, scale
+assert abs(resid['LEDI']['nm583']) < 0.25 * background['LEDI']['nm583'], resid['LEDI']
+
+# A real fluorophore must survive the subtraction. GFP on a V2 board is read LEDB(457)->nm510
+# (no ~488nm channel exists -- see the assist's V2 caveat), so put the emission there, at 3x that
+# cell's background: comfortably over the 25% residual threshold.
+gfp = rig_eem(1.0)
+gfp['LEDB']['nm510'] += 3.0 * wt['LEDB']['nm510']
+r = recommend_fp_settings(gfp, reference=wt)
+assert r is not None, 'a real FP must not be subtracted away'
+assert (r['excite'], r['emit1']) == ('LEDB', 'nm510'), r
+assert r['confidence'] == 'referenced' and r['reference_scale'] is not None, r
+assert r['signal_over_background'] > 2.0, r
+
+# ...and one at 10% of background -- inside the measured WT-vs-WT residual floor -- must NOT be
+# reported, because on real data that size of difference appears between two identical WT vials.
+faint = rig_eem(1.0)
+faint['LEDB']['nm510'] += 0.10 * wt['LEDB']['nm510']
+assert recommend_fp_settings(faint, reference=wt) is None, 'below the measured residual floor'
+
+# A reference at a wildly different density still works but must flag itself.
+r = recommend_fp_settings(rig_eem(5.0), reference=gfp)
+if r is not None:
+    assert 'warning' in r, r
+
+print("PASS: reference subtraction returns the true negative on four measured non-fluorescent "
+      "EEMs, recovers the density scale, keeps a real FP, and drops one under the measured floor")
+
+# --- G) the reference is state, wired through the route helper ---
+from chibio_state import sysData, sysDevices
+import chibio_fluorescence as FL
+
+sysData['M1']['FluorescenceScan'] = {'status': 'done', 'matrix': rig_eem(1.0)}
+sysData['M1']['present'] = 1
+
+# A device with no completed scan cannot be adopted as a reference.
+sysData['M2']['FluorescenceScan'] = {'status': '', 'matrix': {}}
+assert FL.set_fluorescence_reference('M0', 'M2') is False, 'no scan -> refuse, do not store an empty EEM'
+assert FL.reference_matrix('M0') is None
+
+assert FL.set_fluorescence_reference('M0', 'M1') is True
+assert sysData['M0']['FluorescenceReference']['from'] == 'M1'
+# The EEM itself must NOT be in sysData: that dict is jsonified to the browser on every poll.
+assert 'matrix' not in sysData['M0']['FluorescenceReference'], 'bulk EEM must not ride the poll payload'
+assert FL.reference_matrix('M0') is not None and len(FL.reference_matrix('M0')) == 5
+# ...and it must be a copy, so a later scan on M1 cannot silently mutate M0's reference.
+sysData['M1']['FluorescenceScan']['matrix']['LEDI']['nm583'] = 99999.0
+assert FL.reference_matrix('M0')['LEDI']['nm583'] != 99999.0, 'reference must be an independent copy'
+
+assert FL.set_fluorescence_reference('M0', 'clear') is True
+assert FL.reference_matrix('M0') is None and sysData['M0']['FluorescenceReference']['from'] == ''
+
+print("PASS: reference set/clear refuses an unscanned source, stores the EEM outside the polled "
+      "payload, and keeps an independent copy")

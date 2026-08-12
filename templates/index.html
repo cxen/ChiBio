@@ -45,6 +45,11 @@
     --on-fg:      oklch(0.300 0.060 250);
     --go-bg:      oklch(0.890 0.100 145);
     --go-fg:      oklch(0.300 0.070 145);
+    /* Caution: a reading the instrument cannot vouch for. Hue 75 (amber) is 70 deg off
+       --go and 175 deg off --accent, and sits a step darker than --go-bg so it separates
+       by lightness too, not by hue alone. Text on it: 8.00:1 (AAA). In sRGB gamut. */
+    --warn-bg:    oklch(0.860 0.090 75);
+    --warn-fg:    oklch(0.330 0.070 75);
     --shadow:     0 1px 2px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
     /* Chart series, read by chartTheme(). Same source of truth as the CSS. */
     --series-1:   oklch(0.520 0.190 258);
@@ -65,6 +70,8 @@
     --on-fg:      oklch(0.920 0.040 250);
     --go-bg:      oklch(0.400 0.090 145);
     --go-fg:      oklch(0.930 0.050 145);
+    --warn-bg:    oklch(0.400 0.080 75);   /* text on it: 7.57:1 */
+    --warn-fg:    oklch(0.930 0.050 75);
     --shadow:     0 1px 2px rgba(0,0,0,0.40), 0 2px 8px rgba(0,0,0,0.30);
     --series-1:   oklch(0.720 0.150 258);
     --series-2:   oklch(0.720 0.150 145);
@@ -128,7 +135,29 @@
     transition: transform 120ms ease-out, background-color 120ms ease;
   }
   .log-toggle:active { transform: scale(0.96); }
+  /* Same control in the fluorescence panel, where it labels a table rather than overlaying a
+     chart: drop the float and the -28px pull-up that exist to tuck it into a chart's corner. */
+  .log-toggle.fluor-toggle { float: none; margin: 0 0 6px 0; }
   .log-toggle.is-on { background: var(--on-bg); color: var(--on-fg); border-color: var(--accent); }
+  /* Fluorescence assist: the verdict on whether a recommendation has been checked against a
+     matched non-fluorescent reference. No transition -- this re-renders on every poll, and a
+     colour that keeps re-animating reads as a fault. The WORD carries the meaning; the colour
+     only reinforces it, so it survives both themes and colour-blindness. */
+  .fluor-verdict {
+    display: inline-block; margin-right: 8px; padding: 1px 7px;
+    border-radius: 5px; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+    vertical-align: 1px;
+  }
+  .fluor-verdict.is-unverified { background: var(--warn-bg); color: var(--warn-fg); }
+  .fluor-verdict.is-referenced { background: var(--go-bg);   color: var(--go-fg); }
+  .fluor-note { margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--text-muted);
+                max-width: 68ch; text-wrap: pretty; }
+  .fluor-ref { margin-top: 10px; font-size: 13px; }
+  .fluor-ref select { font-size: 13px; padding: 1px 4px; }
+  /* Live values (signal, background, fitted scale) update on each poll -- tabular digits keep
+     the line from reflowing as they change. Same for the heatmap's cells. */
+  #FluorRec, #FluorHeatmap { font-variant-numeric: tabular-nums; }
   input, select, textarea {
     background: var(--surface); color: var(--text); border: 1px solid var(--border); }
   /* :not(.btn) rather than :not([class]) -- the state classes added by setActive()
@@ -1274,6 +1303,17 @@
   <span id="FluorStatus" style="margin-left:10px; font-size:13px; color:var(--text-muted)"></span>
   <div id="FluorV2Note" style="display:none; margin-top:8px; font-size:12px; color:var(--text-muted)">
     <b>V2 board:</b> no ~488&nbsp;nm excitation channel (LEDB&nbsp;457 → LEDC&nbsp;500), so GFP is under-excited — its cleanest onboard readout is LEDB→nm510. Dim GFP-in-cells may still sit near the detection floor.
+  </div>
+  <!-- Without a matched non-fluorescent reference the assist reads biomass: measured on this rig
+       2026-08-13, a sterile tube of medium and three WT cultures all drew the same confident
+       LEDI(550)->nm583 pick, with the "signal" tracking turbidity. Set a reference and the
+       recommendation is made on the residual instead. -->
+  <div id="FluorRefRow" class="fluor-ref">
+    <label for="FluorRefSource" style="color:var(--text-muted)">Non-fluorescent reference:</label>
+    <span id="FluorRefState" style="font-weight:600">none</span>
+    <select id="FluorRefSource" aria-label="Reactor whose last scan to use as the reference"></select>
+    <button id="FluorRefSet" class="btn btn-sm btn-outline-secondary">Use its last scan</button>
+    <button id="FluorRefClear" class="btn btn-sm btn-outline-secondary">Clear</button>
   </div>
   <div id="FluorRec" style="margin-top:10px; font-size:14px"></div>
   <div id="FluorHeatmap" style="margin-top:10px; overflow-x:auto"></div>

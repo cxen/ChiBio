@@ -611,6 +611,7 @@ function updateData(data){
             document.getElementById("FPGain3").value = data.FP3.Gain
         }
               
+        window._fluorData = data;   // last payload, so a panel click can redraw without waiting for the next poll
         renderFluorescence(data);  // fluorescence-assist panel (self-gates; safe every poll)
 
         // Now to draw the charts
@@ -903,45 +904,92 @@ function renderFluorescence(data){
   // is independent of any scan, so set it before the scan early-returns below).
   var v2note = document.getElementById('FluorV2Note');
   if(v2note && data.Version) v2note.style.display = (data.Version.LED == 2) ? '' : 'none';
-  var fs = data.FluorescenceScan; if(!fs) return;
+  var fs = data.FluorescenceScan;
+  // The reference row is state, not scan output. Render it before any of the scan early-returns
+  // below, or on a freshly booted device -- where no scan has run yet -- the source dropdown
+  // never populates and the controls are unusable.
+  renderFluorReference(data, fs);
   var status = document.getElementById('FluorStatus'); if(!status) return;
-  if(fs.status === 'running'){ status.textContent = 'Scanning… (~30–90 s)'; window._fluorSig = 'running'; return; }
+  if(fs && fs.status === 'running'){ status.textContent = 'Scanning… (~30–90 s)'; window._fluorSig = 'running'; return; }
   if(status.textContent.indexOf('Scanning') === 0) status.textContent = '';   // scan just finished
-  var n = fs.matrix ? Object.keys(fs.matrix).length : 0;
-  if(!n) return;
+  var n = (fs && fs.matrix) ? Object.keys(fs.matrix).length : 0;
+  if(!n){
+    // No scan for the reactor currently selected. Returning early here used to leave the PREVIOUS
+    // reactor's matrix, recommendation and verdict on screen under the new reactor's name -- each
+    // reactor is a different vial, so that invites applying one sample's settings to another.
+    // Scan results are RAM-only, so this is the normal state after any server restart.
+    if(window._fluorSig !== 'empty:' + data.UIDevice){
+      window._fluorSig = 'empty:' + data.UIDevice;
+      window._fluorRec = null;
+      document.getElementById('FluorRec').innerHTML =
+        '<i>No scan yet on ' + data.UIDevice + ' — run a quick scan. (Scan results are held in RAM and are cleared by a server restart.)</i>';
+      document.getElementById('FluorHeatmap').innerHTML = '';
+    }
+    return;
+  }
   var r = fs.recommendation;
-  var sig = n + '|' + (r ? r.excite + r.emit1 + r.emit2 : 'none');
+
+  // The gate must include the verdict and the reference, not just which cell was picked: the same
+  // cell can go from unverified to referenced, and re-rendering only on a changed cell would leave
+  // a stale "Unverified" chip sitting over a checked result.
+  var sig = data.UIDevice + '|' + n + '|' + (r ? r.excite + r.emit1 + r.emit2 + (r.confidence||'') + (r.signal||'') : 'none')
+          + '|' + (fs.referenced ? 'ref:' + (fs.reference_from||'') + (fs.reference_scale||'') : 'raw')
+          + '|' + (window._fluorResidual ? 'resid' : 'counts');
   if(window._fluorSig === sig) return;
   window._fluorSig = sig;
 
   var recEl = document.getElementById('FluorRec'), hmEl = document.getElementById('FluorHeatmap');
   if(r){
     window._fluorRec = r;
-    recEl.innerHTML = '<b>Recommended:</b> excite <b>'+r.excite+'</b> ('+r.excite_nm+' nm), base '+r.base
+    var referenced = (r.confidence === 'referenced');
+    var verdict = '<span class="fluor-verdict ' + (referenced ? 'is-referenced">Checked' : 'is-unverified">Unverified') + '</span>';
+    var detail = '';
+    if(referenced){
+      detail = ' &nbsp;<span style="color:var(--text-muted)">signal ' + r.signal
+             + ' over a ' + r.background + ' background ('
+             + (r.signal_over_background !== null && r.signal_over_background !== undefined ? r.signal_over_background + '×' : '—')
+             + '), reference scaled ' + r.reference_scale + '×</span>';
+    }
+    recEl.innerHTML = verdict
+      + '<b>Recommended:</b> excite <b>'+r.excite+'</b> ('+r.excite_nm+' nm), base '+r.base
       + ', emit1 <b>'+r.emit1+'</b> ('+r.emit1_nm+' nm), emit2 '+r.emit2+' ('+r.emit2_nm+' nm), gain '+r.gain
       + ' &nbsp; <button class="btn btn-sm btn-success fluorApply" data-fp="1">→ FP1</button>'
       + ' <button class="btn btn-sm btn-success fluorApply" data-fp="2">→ FP2</button>'
-      + ' <button class="btn btn-sm btn-success fluorApply" data-fp="3">→ FP3</button>';
+      + ' <button class="btn btn-sm btn-success fluorApply" data-fp="3">→ FP3</button>'
+      + detail
+      + (r.warning ? '<div class="fluor-note">'+r.warning+'</div>' : '');
   } else {
     window._fluorRec = null;
-    recEl.innerHTML = '<i>No clear fluorescence peak found — the sample may be non-fluorescent.</i>';
+    recEl.innerHTML = fs.referenced
+      ? '<span class="fluor-verdict is-referenced">Checked</span><i>Nothing rises above the reference — no fluorophore detected in this sample.</i>'
+      : '<i>No clear fluorescence peak found — the sample may be non-fluorescent.</i>';
   }
 
+  // With a reference set you can look at the residual instead of the raw counts, which is where
+  // the excitation ridge visibly disappears. Same toggle component as the chart ln switches.
+  var showResid = !!(window._fluorResidual && fs.residual);
+  var matrix = showResid ? fs.residual : fs.matrix;
   var bands = fs.bands || [], maxv = 0;
-  for(var led in fs.matrix){ for(var i=0;i<bands.length;i++){ var v=fs.matrix[led][bands[i]]||0; if(v>maxv) maxv=v; } }
+  for(var led in matrix){ for(var i=0;i<bands.length;i++){ var v=Math.abs(matrix[led][bands[i]]||0); if(v>maxv) maxv=v; } }
   if(maxv <= 0) maxv = 1;
-  var rows = Object.keys(fs.matrix).sort(function(a,b){ return fs.matrix[a]._wl - fs.matrix[b]._wl; });
-  var h = '<table style="border-collapse:collapse;font-size:12px"><tr><th style="padding:3px 6px;text-align:left">excite \\ emit (nm)</th>';
+  var rows = Object.keys(matrix).sort(function(a,b){ return matrix[a]._wl - matrix[b]._wl; });
+  var h = '';
+  if(fs.residual){
+    h += '<button id="FluorResidToggle" class="log-toggle fluor-toggle' + (showResid ? ' is-on' : '')
+       + '" aria-pressed="' + (showResid ? 'true' : 'false') + '">'
+       + (showResid ? 'residual' : 'counts') + '</button><br>';
+  }
+  h += '<table style="border-collapse:collapse;font-size:12px"><tr><th style="padding:3px 6px;text-align:left">excite \\ emit (nm)</th>';
   for(var i=0;i<bands.length;i++) h += '<th style="padding:3px 6px">'+bands[i].replace('nm','')+'</th>';
   h += '</tr>';
   for(var ri=0;ri<rows.length;ri++){
-    var led = rows[ri], row = fs.matrix[led];
+    var led = rows[ri], row = matrix[led];
     h += '<tr><td style="padding:3px 6px;white-space:nowrap"><b>'+led+'</b> '+row._wl+'</td>';
     for(var i=0;i<bands.length;i++){
-      var b = bands[i], v = row[b]||0;
+      var b = bands[i], v = row[b]||0, frac = Math.abs(v)/maxv;
       var scatter = _BAND_WL[b] < row._wl + 20;                       // below the Stokes shift = scatter
       var isRec = r && led === r.excite && b === r.emit1;
-      h += '<td style="padding:3px 6px;text-align:center;background:'+_fluorColor(v/maxv)+';color:'+((v/maxv)>0.5?'#fff':'#222')+';'
+      h += '<td style="padding:3px 6px;text-align:center;background:'+_fluorColor(frac)+';color:'+(frac>0.5?'#fff':'#222')+';'
         + (scatter?'opacity:0.4;':'') + (isRec?'outline:2px solid #e34948;':'') + '">'+Math.round(v)+'</td>';
     }
     h += '</tr>';
@@ -949,9 +997,49 @@ function renderFluorescence(data){
   hmEl.innerHTML = h + '</table>';
 }
 
+// The reference row: which reactor's scan is being subtracted, and the controls to change it.
+// Rebuilt only when its own state changes -- it sits in a 1 s poll like everything else.
+function renderFluorReference(data, fs){
+  var stateEl = document.getElementById('FluorRefState'), sel = document.getElementById('FluorRefSource');
+  if(!stateEl || !sel) return;
+  var ref = data.FluorescenceReference || {};
+  var from = ref.from || '';
+  var present = data.presentDevices || {};
+  var opts = Object.keys(present).filter(function(m){ return present[m]; });
+  var sig = from + '|' + opts.join(',') + '|' + (fs && fs.reference_scale ? fs.reference_scale : '');
+  if(window._fluorRefSig === sig) return;
+  window._fluorRefSig = sig;
+
+  stateEl.textContent = from ? from : 'none';
+  stateEl.style.color = from ? 'var(--text)' : 'var(--text-muted)';
+  var keep = sel.value;
+  sel.innerHTML = opts.map(function(m){ return '<option value="'+m+'">'+m+'</option>'; }).join('');
+  if(opts.indexOf(keep) >= 0) sel.value = keep;
+}
+
 $(function(){
   $('#FluorScanQuick').click(function(){ $.ajax({type:'POST', url:'/FluorescenceScan/0/quick'}); document.getElementById('FluorStatus').textContent = 'Scanning… (~30–90 s)'; window._fluorSig = 'running'; });
   $('#FluorScanFull').click(function(){ $.ajax({type:'POST', url:'/FluorescenceScan/0/full'}); document.getElementById('FluorStatus').textContent = 'Scanning… (full sweep, minutes)'; window._fluorSig = 'running'; });
+  // Reference controls. The source reactor must already hold a completed scan -- the route answers
+  // 409 if it doesn't, which is worth saying out loud rather than failing silently.
+  $('#FluorRefSet').click(function(){
+    var src = $('#FluorRefSource').val(); if(!src) return;
+    $.ajax({type:'POST', url:'/SetFluorescenceReference/0/'+src})
+      .done(function(){ document.getElementById('FluorStatus').textContent = 'Reference set from '+src+' — rescan to apply it.'; window._fluorRefSig = null; })
+      .fail(function(){ document.getElementById('FluorStatus').textContent = 'Scan '+src+' first: it has no completed scan to use as a reference.'; });
+  });
+  $('#FluorRefClear').click(function(){
+    $.ajax({type:'POST', url:'/SetFluorescenceReference/0/clear'})
+      .done(function(){ document.getElementById('FluorStatus').textContent = 'Reference cleared — rescan to see the unreferenced result.'; window._fluorRefSig = null; });
+  });
+  $(document).on('click', '#FluorResidToggle', function(){
+    window._fluorResidual = !window._fluorResidual;
+    window._fluorSig = null;                       // force one rebuild
+    var hadFocus = (document.activeElement && document.activeElement.id === 'FluorResidToggle');
+    if(window._fluorData) renderFluorescence(window._fluorData);   // redraw now, not on the next poll
+    // innerHTML replaces the button, so a keyboard activation would drop focus to <body>.
+    if(hadFocus){ var el = document.getElementById('FluorResidToggle'); if(el) el.focus(); }
+  });
   // Apply fills the FP dropdowns; the user reviews and clicks that FP's Active button to enable.
   $(document).on('click', '.fluorApply', function(){
     var r = window._fluorRec; if(!r) return;

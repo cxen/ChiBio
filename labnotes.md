@@ -354,6 +354,180 @@ pending.**
 
 ---
 
+## 2026-08-13 (00:30 → 01:35) — the Run 0 vials as a matched-control experiment
+
+**No new culture was set up.** The Run 0 vials were still in M0–M3: WT in M0, M1, M3 and the
+sterile-medium blank in M2, ~29 h after inoculation, heater off and stirrer off since
+2026-08-12. Every vial in the rig was therefore **non-fluorescent**, which makes the whole rig a
+known-answer test for the fluorescence assist: the correct answer for each of the four reactors
+is "no fluorophore".
+
+Nothing was inoculated, blanked, or reconfigured. Actuation was limited to the stirrer (to
+homogenise before reading) and the excitation LEDs the scan drives and switches off itself.
+Scripts: `probe_cultures.py`, `probe_repeat.py`, `probe_reference.py` (all in the repo).
+
+### State at 00:30 *(log)*
+
+M0–M3 present, M4 absent (retired 2026-08-12). Experiment off, all outputs off, `OD0.target`
+still the stale 65000 default, so **every absolute OD below is uncalibrated** — raw transmitted
+counts are quoted instead.
+
+| | M0 | M1 | M2 (sterile) | M3 |
+|---|---|---|---|---|
+| OD raw, settled (counts) | 2107 | 799 | 10293 | 2165 |
+| Internal air (°C) | 26.19 | 29.94 | 27.25 | 26.00 |
+| IR / media (°C) | 26.47 | 28.51 | 26.15 | 26.27 |
+| External air (°C) | 36.25 | 36.25 | 36.25 | 36.25 |
+
+⬜ **The external-air thermometer read exactly 36.25 °C on all four reactors**, with the heaters
+off and the cultures at ~26 °C. Four independent sensors agreeing to the digit on a value ~10 °C
+above everything else is not a plausible measurement. Treat `external_air_temp` as suspect until
+someone checks it at the bench; it is not used by the thermostat (which runs off the IR/media
+sensor), so no control loop depends on it.
+
+⬜ **The sterile blank has lost 11.7 % of its transmission**: M2 read 11651 counts when it was
+blanked at Run 0 start and 10293 now. It is the only reactor whose contents should not change.
+Worth a look before the tube is reused — contamination and condensation both fit.
+
+### Sedimentation is visible inside one measurement window
+
+Each reactor was stirred 2 min, the stirrer stopped, and three OD reads taken 8 s apart (the
+optical state `runExperiment` measures in):
+
+| | read 1 | read 2 | read 3 | drift |
+|---|---|---|---|---|
+| M0 | 2263 | 2156 | 2077 | −8.2 % |
+| M3 | 2278 | 2137 | 2047 | −10.1 % |
+| M1 | 775 | 753 | 734 | −5.3 % |
+| M2 (sterile) | 10312 | 10337 | 10288 | −0.2 % |
+
+Transmission *rises* monotonically across the replicate series in every reactor holding cells and
+is flat in the one that does not, i.e. cells are settling out of the beam over the ~16 s the three
+replicates take. The sterile tube bounds the read noise at ±0.2 %. This is a stationary-phase,
+unheated culture, so it is an upper bound on what a stirred exponential culture would do — but it
+means `od_spread` mixes two things, a genuine mixing signal and a monotonic sedimentation ramp,
+and the 3× median lands nearer the *later* (more settled) reads than the first.
+
+### Every reactor, including the sterile blank, was told it was fluorescent
+
+Quick fluorescence scans, LED power 0.5, stir off + 5 s settle:
+
+| reactor | contents | recommendation | reported "signal" |
+|---|---|---|---|
+| M2 | **sterile medium** | LEDI (550) → nm583 / nm620 | 37.7 |
+| M0 | WT | LEDI (550) → nm583 / nm620 | 269.6 |
+| M3 | WT | LEDI (550) → nm583 / nm620 | 275.9 |
+| M1 | WT (densest) | LEDI (550) → nm583 / nm620 | 516.2 |
+
+All four are false positives, and **the reported signal is ordered by turbidity** — the sterile
+tube gets the same cell recommended at 1/7 the magnitude. This confirms the 2026-07-17/18
+finding (identical `ex550→nm583/620` for GFP and YFP) and settles what it was reading: not the
+fluorophore, and not only cellular autofluorescence either, since a tube with no cells in it
+produces the same pick.
+
+**Scan-to-scan repeatability**, 3 repeats per reactor over 9 min with a re-homogenise before each:
+
+| reactor | signal r1 / r2 / r3 | per-cell CV across the EEM |
+|---|---|---|
+| M2 | 37.7 / 37.6 / 37.6 | median 0.07 %, worst 0.39 % |
+| M0 | 274.9 / 275.2 / 276.3 | median 0.44 %, worst 4.6 % |
+| M3 | 284.1 / 283.5 / 282.2 | median 0.38 %, worst 2.3 % |
+| M1 | 517.6 / 520.0 / 523.2 | median 0.40 %, worst 1.3 % |
+
+The instrument is repeatable to ~0.4 %. Whatever separates two reactors is therefore not read
+noise.
+
+### Subtracting a matched non-fluorescent reactor
+
+Fitting a single scale factor to a reference EEM and subtracting it (median of the per-cell
+ratios, so one genuinely fluorescent cell cannot drag the fit):
+
+| sample − scaled reference | fitted scale | median \|residual\|/signal | 90th pct |
+|---|---|---|---|
+| M3 − M0 (WT vs WT, same density) | 1.03 | **6.3 %** | 18 % |
+| M0 − M3 (reversed) | 0.99 | 8.2 % | 21 % |
+| M1 − M0 (WT vs WT, 1.8× denser) | 2.02 | 14.4 % | 40 % |
+| M0 − M2 (culture vs **sterile**) | 9.12 | 22.6 % | 65 % |
+| M1 − M2 (culture vs **sterile**) | 17.14 | 19.7 % | 50 % |
+
+Three results worth carrying forward:
+
+1. **A matched WT culture removes ~92–94 % of the background**, and the leftover 6–8 % is ~15×
+   the read noise, so it is real reactor-to-reactor optical difference, not measurement error.
+   That 6–8 % is the floor any fluorophore has to beat when the control lives in a *different* vial.
+2. **A sterile tube is not a substitute for a matched culture** (20–23 % residual). Medium
+   scatters differently from cells. The sterile blank earns its slot for the OD/instrument floor,
+   not as the fluorescence control.
+3. **Density matters**: matching to within ~1.05× halves the floor versus a 1.8× mismatch.
+   Same-reactor referencing (scan before induction, scan after) should do far better again, since
+   repeatability is 0.4 %.
+
+### Reference subtraction, driven on the live cultures
+
+Implemented (see the code section below) and then run against the four real vials through the
+real route. Every case is a true negative by construction:
+
+| case | setup | result |
+|---|---|---|
+| 1 | M3 scanned with no reference | LEDI→nm583, signal 281.1, labelled **unverified** |
+| 2 | M0 referenced against M3 (scale 0.97) | **no recommendation** — the correct answer |
+| 3 | M1 referenced against sterile M2 (scale 16.5) | **no recommendation**, despite the 17× mismatch |
+| 4 | reference cleared from M0 | back to the unverified LEDI→nm583, signal 276.6 |
+| 5 | reference requested from a device with no scan | refused, HTTP 409 |
+
+### Retrospective analysis of the archived runs
+
+**Run 0 (2026-08-11), from the CSVs and the events sidecars.**
+
+- **Per-reactor blanks span 1.35×** on the same medium at the same laser power: M2 11651,
+  M4 13118, M0 14744, M1 15536, M3 15764 counts (CV 12.3 %). This is the per-reactor optical
+  difference that blanking absorbs, and it is not small.
+- **The FP background in a WT culture is almost entirely instrument, not biology.** The
+  sterile M2's emit/base ratios sit inside the spread of the four WT cultures' — FP3 nm620:
+  sterile 0.518, WT 0.489–0.556. Ratios *fall* slightly with OD in every channel. Because both
+  the emission and the CLEAR base scale with scatter, the ratio is largely scatter-invariant and
+  what it reports is the spectral shape of the excitation leak.
+- **σ_device across the four WT reactors at matched OD**: CV 5.1 % (FP3 nm620) to 23.9 %
+  (FP2 nm583), with M1 the high outlier in every channel. Cross-device fluorescence comparison
+  without per-reactor calibration is not supportable at this spread.
+- **Cross-reactor subtraction of the FP-slot ratios** (M1 as control for M0/M3/M4) leaves 8–53 %
+  of the raw ratio depending on channel — much worse than the EEM-level subtraction above,
+  because a single FP slot has no scatter cells to fit a scale on.
+- **The emit/base ratio is not perfectly gain-invariant.** Across the mid-run x10→x6 change the
+  ratio moved −1.5 % (FP3), −2.4 % (FP1) and −7.8 % (FP2), against an OD drift that accounts for
+  only ~0.2 %. The claim that a mid-run gain change is safe for comparability holds to within
+  roughly ±8 %, not exactly. ⬜ Worth a deliberate gain ladder on one reactor to pin down.
+
+**July weekend run (2026-07-17/18) — mostly unusable for cross-run FP comparison.**
+
+- Excitation LEDs ran at power **0.5**, against **1.0** in Run 0. Recorded in the CSV
+  (`LED_457nm_setpoint` etc.), so it is recoverable, but it is a confounder for any raw-count
+  comparison between the two runs.
+- **It predates the events log**, and the metadata sidecar only captures the configuration at
+  *start* (all three FP slots `on: 0`). The slots were switched on mid-run — FP1 on M0 for 126
+  rows, FP2 on M1 for 127, FP3 on both for ~690 — so which bands produced which numbers is not
+  recoverable from the archive. This is exactly the gap `logEvent` was added to close, and it
+  closed it: Run 0's sidecars record every FP config change with an `exp_time`.
+- Note for anyone reading these CSVs: **an inactive FP slot logs `0`, not `NaN`**, so a
+  zero in an FP column means "slot off", not "no signal". Filter zeros before taking medians.
+
+### Code changed today
+
+- **Matched non-fluorescent reference subtraction** in the fluorescence assist
+  (`chibio_fluorescence.py`, route `/SetFluorescenceReference/<M>/<source>`). A recommendation is
+  now made on the residual after subtracting a scaled reference EEM, and carries
+  `confidence: referenced|unreferenced`. Without a reference the old pick is preserved but is
+  labelled unverified and says why. Thresholds come from the measurements above.
+- The UI shows the verdict, the reference controls, and a **counts/residual toggle** on the
+  heatmap. Verified on the device in both themes.
+- **Bug found while verifying (pre-existing):** switching the UI to a reactor with no scan left
+  the *previous* reactor's EEM and recommendation on screen under the new reactor's name — one
+  vial's settings offered for another's. The panel now clears and says which reactor has no scan.
+
+Off-device suite 13/13; `device_selftest.py` 16/16 on staging and again on production.
+
+---
+
 ## To fill in
 
 Please add these — the software has no way to know them.
@@ -368,6 +542,11 @@ Please add these — the software has no way to know them.
 - [ ] Whether the OD 0.45 inoculum was measured or assumed; whether it was washed
 - [ ] Inoculation wall-clock time
 - [ ] Time the run was stopped on 2026-07-18
+
+**2026-08-13 probes**
+- [ ] Why does `external_air_temp` read exactly 36.25 °C on all four reactors with the heaters off?
+- [ ] Is the sterile M2 blank still sterile? Its transmission fell 11.7 % over ~29 h.
+- [ ] Time the Run 0 vials are finally discarded
 
 **August Run 0**
 - [ ] Medium: volume made, time made, autoclave time; glucose filter-sterilised separately?
