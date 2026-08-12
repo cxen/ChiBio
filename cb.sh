@@ -40,7 +40,19 @@ for _ip in $(hostname -I 2>/dev/null); do
 done
 echo
 
+# --timeout 300: gunicorn's default is 30 s, and that is FATAL here. The worker
+# runs the experiment threads in-process; five reactors each doing 3x OD plus
+# 3 FP slots x 3 replicates per cycle, all serialized through the single global
+# I2C lock on a single-core BeagleBone, can starve the worker's heartbeat past
+# 30 s. The master then kills it -- and because ALL experiment state lives in
+# RAM (sysData), a worker restart silently ends every running experiment: blanks
+# reset to the 65000 default, FP config clears, cycles goes back to 0, and only
+# the CSV rows already flushed to disk survive. Observed 2026-08-11 20:12:57,
+# "[CRITICAL] WORKER TIMEOUT (pid:1258)", which killed a live 5-reactor run three
+# minutes in. Raise the ceiling well clear of the worst cycle.
+# --graceful-timeout 60: give a worker that IS shutting down time to finish a
+# cycle's CSV write rather than losing the row.
 # Uncomment the following line to run ChiBio in the background
-# screen -dmS ChiBio bash -c "gunicorn -b 0.0.0.0:5000 app:application"
+# screen -dmS ChiBio bash -c "gunicorn --timeout 300 --graceful-timeout 60 -b 0.0.0.0:5000 app:application"
 # Then, comment out the next line
-gunicorn -b 0.0.0.0:5000 app:application
+gunicorn --timeout 300 --graceful-timeout 60 -b 0.0.0.0:5000 app:application
