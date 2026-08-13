@@ -15,9 +15,17 @@ Result: **~40 works where Chi.Bio was actually used, modified, benchmarked or cr
 16 divergent software forks, and two published hardware forks. Every correction the audit found
 to revision 1 is recorded in [§0](#0-corrections-to-revision-1) rather than silently edited.
 
+**Revision 3, 2026-08-13** — a *depth* pass, not a breadth pass. The corpus search was re-run
+from scratch (PubMed, Europe PMC exact-phrase, the fork network) and **came back complete: not
+one new work**. What changed instead is that three of revision 2's "highest-value unread" items
+have now been read in full, and they carry the most directly actionable numbers in the document.
+Recorded in [§9](#9-revision-3--the-deep-read-2026-08-13), with the corrections it forced to
+revision 2 kept there rather than silently edited.
+
 This fork = a divergent refactor of `HarrisonSteel/ChiBio` (Flask app on a BeagleBone Black,
 I2C bus, OD turbidostat, PI+MPC thermostat, peristaltic pumps, optogenetics via on-board LEDs,
-AS7341 spectrometer for OD + fluorescence). Rig: five physical reactors, V2 LED board.
+AS7341 spectrometer for OD + fluorescence). Rig: **four** working reactors (M4 retired
+2026-08-12, reported to LabMaker 2026-08-13), V2 LED board.
 
 > **Implementing something, or planning an experiment?** Read
 > **`docs/audit-2026-08-11-findings-and-actions.md`** instead — it is the work order derived from
@@ -1037,14 +1045,17 @@ the abstract** — which caught several false positives, including a paper whose
 automated mini-bioreactors but which used a **Pioreactor**, and a di Bernardo-group paper with
 zero Chi.Bio mentions.
 
-**Highest-value items still unread:**
+**Highest-value items still unread** *(status updated by revision 3 — see [§9](#9-revision-3--the-deep-read-2026-08-13))*:
 
-1. **Methods Mol Biol 3041:145–195** (Stacey, Lee, Gallup, Csibra, Papachristodoulou, Steel,
-   Sechkar 2026) — the source lab's own 51-page Chi.Bio calibration protocol. Paywalled, no
-   abstract exposed. **Get this before doing the FP rework.** Companion chapter `…_13` likewise.
-2. **Pen, Nunn & Goyal 2021** (ACS Synth Biol 10(4):766–777) — a 25 mL turbidostat built around
-   *"high dynamic range"* multicolour in-situ fluorescence, i.e. precisely where Chi.Bio is weak.
-   Closed access, no preprint, no repository copy.
+1. ~~**Methods Mol Biol 3041:145–195**~~ — **largely resolved (§9.2, §9.4).** Abstract now
+   exposed in PubMed; and the chapter is reference [90] of the Stacey sponge-RNA preprint, whose
+   open Methods carry the operating protocol and the per-reactor `y = mx + c` FPCountR
+   conversion. Buying the chapter would add troubleshooting detail, not the method. The
+   "companion chapter `…_13`" claim was **wrong** — it is a co-culture cybergenetics chapter.
+2. ~~**Pen, Nunn & Goyal 2021**~~ — **identified (§9.2, §9.5).** ACS Synth Biol 10(4):766–777,
+   `10.1021/acssynbio.0c00574`. Still closed-access, but the architecture is now known from its
+   abstract and secondary descriptions: fibre-bundle probe + microPMT, 30 mL vial — the same
+   optical front end Sambruna recommends as the fix.
 3. **Supplementary information was not fetched for any paper.** Several relevant numbers live
    there (Lee's Chi.Bio fluorescence characterisation; Lazar's light-intensity calibration;
    Stacey's per-reactor conversion curves).
@@ -1062,3 +1073,183 @@ code, though those platforms have weak site search and that negative is weaker t
 **One item never retrieved:** Pentz et al. 2024 bioRxiv (`10.1101/2024.11.20.624476`) — HTTP 500
 across two sessions; characterised from its abstract plus the authors' companion STAR Protocols
 paper, which does name Chi.Bio.
+
+---
+
+## 9. Revision 3 — the deep read (2026-08-13)
+
+Revision 2 closed with a list of "highest-value items still unread" (§8). This revision reads
+three of them and re-runs the corpus search. **The search found nothing new** — which is itself
+a result, and is reported first so it is not mistaken for a gap.
+
+### 9.1 The corpus is closed (for now)
+
+Re-run 2026-08-13, two days after revision 2:
+
+| Avenue | Method | Result |
+|---|---|---|
+| PubMed | `Steel H[Author] AND bioreactor`; `Sechkar K[Author]`; title searches | 0 new works |
+| Europe PMC | exact phrase `"Chi.Bio"` full-text | **35 hits — identical to revision 2's count** |
+| Europe PMC | fuzzy `"ChiBio"` | 20 hits, all either already held or tokeniser noise (chitosan, chito-oligosaccharide, liposome papers — verified false positives by re-querying each with `EXT_ID` + the exact phrase, which returns 0) |
+| Fork network | `HarrisonSteel/ChiBio` forks by `pushed_at` | 39 forks, no new divergent one; upstream last pushed 2026-02-10 |
+
+Two works surfaced that revision 2 does **not** cite, and both are correctly excluded by the
+triage rule (reference-only mentions, no Chi.Bio-produced data): Espinel-Ríos 2025, *Front Syst
+Biol* 5:1583534, a bioengineering-education perspective; and Jang & Avalos 2025, *FEMS Yeast Res*
+25, an optogenetics-in-yeast review. Everything else that looked new — Lazar/Tabor's green light
+sensor, Klass's malonyl-CoA work, Deng's gene syntaxes, Droghetti/Tallarico's damped
+oscillations, Olivi's DnaA, Guyot's qB2H, Guérin's ModuloStat, Koehler/Pentz's STAR Protocols —
+is already in revision 2 under an author name the topic search did not match.
+
+**Conclusion: breadth is done.** Further effort belongs in depth (below), in the supplements
+(§8 item 3, still unfetched), and in the two databases never swept (ProQuest, CORE).
+
+### 9.2 Corrections to revision 2
+
+- **MMB `…_13` is not a calibration companion.** §8 called it a "companion chapter" to the
+  calibration protocol. It is **Lee, Stacey, Gallup, Steel & Sechkar 2026, "Dynamic Robust
+  Control of Microbial Communities Using Cybergenetics", *Methods Mol Biol* 3041:261–285**
+  (`10.1007/978-1-0716-5304-3_13`) — a co-culture cybergenetics methodology chapter, the
+  book-chapter form of the Lee 2025 *Cell Rep Methods* work. Relevant, but not about calibration.
+- **Both MMB chapters are now abstracted in PubMed.** §8 recorded them as "paywalled, no abstract
+  exposed". Both now carry full abstracts, which is how the above was settled.
+- **The calibration chapter has a freely-readable primary paper.** MMB 3041:145–195 is cited as
+  reference **[90]** by the Stacey sponge-RNA preprint — i.e. the chapter *is* the full protocol
+  behind that preprint's Methods, and the preprint's Methods are open. §8 item 1 is therefore
+  substantially satisfied without buying the chapter (§9.4).
+- **Pen, Nunn & Goyal 2021 is identified** (§8 item 2, previously known only by citation): *"An
+  Automated Tabletop Continuous Culturing System with Multicolor Fluorescence Monitoring for
+  Microbial Gene Expression and Long-Term Population Dynamics"*, ACS Synth Biol **10(4):766–777**,
+  `10.1021/acssynbio.0c00574` (PMID 33819013). Still closed-access, but its architecture is now
+  known and it matters (§9.5).
+
+### 9.3 Sambruna, Tallarico & Cosentino Lagomarsino 2026, read in full
+
+bioRxiv `10.64898/2026.06.29.735387`, posted 2026-07-09, CC-BY. Revision 2 characterised this
+from the PDF; the full text adds Methods and four results that change what we should do.
+
+**They tested our exact strain.** Their *E. coli* arm is **fixed TB204 expressing sfGFP** —
+`MG1655 attP21::PR-sfGFP`, Addgene 230033, the same isogenic strain our runbook assigns to M3 as
+"the worst case on V2, the one the track exists for". Their result on it: raw intensities scale
+linearly with cell concentration but show **no clear separation** from wild-type; the
+signal-to-background ratio "fluctuated around unity", with **only two concentrations exceeding a
+10% discrepancy threshold**. After ratiometric normalisation a marginal separation appears, but
+"the magnitude of this separation was comparable to the inter-device variability".
+
+**Their four results, with the numbers:**
+
+1. **Beads work, cells do not.** Both microsphere types scale linearly with concentration, and
+   net intensity after subtracting a matched non-fluorescent bead has an **intercept close to
+   zero**. Fixed Rpl5-GFP *S. cerevisiae*: S/B ≈ 1, no discernible peak at the GFP emission
+   region. The same samples separate cleanly in a monochromator plate reader — so it is the
+   instrument, not the expression level.
+2. **Ratiometric normalisation fails at both ends, analytically.** Writing the normalised
+   intensity as `(a·c + b) / (a_C·c + b_C)`, the concentration-independent backgrounds `b`, `b_C`
+   dominate at low `c`, and Clear saturation at **65535** offsets it at high `c`. **The failure
+   mode named for the first time: "particularly problematic in dynamic experiments with periodic
+   dilutions, where the normalization generates artifactual signal changes that can be mistaken
+   for biological responses."** That is a turbidostat, i.e. exactly our operating mode.
+3. **Inter-device variability is the binding constraint, and it is not an offset.** Net signal ÷
+   σ_device fluctuates around **3.3** — above the noise on average, but not consistently.
+   KDE per device shows peak positions shifting between devices, and Figure 5C shows
+   **"device-specific concentration trends that cannot be corrected by a simple additive
+   offset"**. Beads, by contrast, stay separated across all devices — proving the problem is
+   sensitivity on dim samples, not a broken instrument.
+4. **Four practical guidelines**, from their data plus direct correspondence with Steel:
+   - non-fluorescent media (LB autofluorescence "significantly increases background");
+   - **design the experiment to induce from a zero-signal baseline** — start uninduced and
+     subtract the pre-induction baseline — **rather than comparing two steady-state conditions**;
+   - per-device calibration against a fluorescent reference standard before any cross-device
+     comparison;
+   - **verify the expected signal in a more sensitive reference instrument before committing.**
+
+**Their bead protocol, which is directly executable here** (Methods, Table 1): Fluoresbrite YG
+Carboxylate 1.00 ± 0.03 µm (nominal ex/em 441/486); PS-FluoRed 0.98 ± 0.03 µm (530/607);
+non-fluorescent amino-polystyrene **AP-10-10**, 1.0–1.4 µm (Spherotech) as the matched blank.
+Diluted in Milli-Q water into standard Chi.Bio vials prefilled with **20 mL**, over
+**0.2 × 10⁷ – 3.4 × 10⁷ particles/mL**. Settings: **gain ×512, power 0.1** for beads, **power
+0.01** for cells; ex/em **395/510** (YG) and **523/620** (pink); **457/510** for GFP cells. Five
+reactors on a shared controller, thermostat and pumps off, ambient temperature.
+
+**Their hardware suggestions**, if sensitivity is ever the goal: fibre-couple a dedicated
+visible-range spectrometer plus a high-pass filter to cut the excitation leak, or bolt on an
+external flow cytometer (as two cited groups did).
+
+### 9.4 The Oxford lab's own Chi.Bio operating protocol
+
+From the Methods of **Stacey, Sechkar, Corrao, Steel & Papachristodoulou 2026**, bioRxiv
+`10.64898/2026.05.19.726096` — the primary paper whose full protocol is MMB 3041:145–195. This is
+the closest thing that exists to a reference operating procedure from the people who built the
+device, and several details differ from ours:
+
+- **Medium M9 with antibiotics**, 37 °C, **stirring 0.5**, ~20 mL — our settings exactly.
+- **Vials autoclaved, then cleaned with ethanol *and dried*; media and waste tubing flushed with
+  70% ethanol.** Note "and dried": `INVARIANTS.md` §6 lists *residual ethanol from vial wiping*
+  as an untested candidate for M0's unexplained slow growth, and the source lab treats drying as
+  an explicit step rather than an afterthought.
+- **Blank, then a 15-minute stability check, then re-blank if needed.** Verbatim: *"Experiments
+  ran for a further 15 minutes to confirm OD blanking stability, after which any further blanking
+  was performed."* Preceded by 15 min of temperature equilibration before the first blank. **We
+  do neither** — we blank once and proceed.
+- Turbidostat **setpoint 0.5** with **OD dithering enabled for growth-rate calculation** (our
+  `Zigzag`); inoculated with **200 µL**.
+- **Fluorescence settings: GFPmut3 = 457 nm excitation / 510 nm emission**; mScarlet-I = 523/583
+  **or** 595/670. The 457/510 choice independently confirms the LEDB→nm510 "least-bad readout"
+  this fork already surfaces in the V2 GFP caveat.
+- **Absolute quantification is per reactor, and it is a line not a scalar.** They adapt FPCountR
+  (Csibra & Stan, *Nat Commun* 13:6600, 2022) by sampling the reactor around induction events and
+  measuring those samples in a plate reader at fixed settings, then: *"For each Chi.Bio reactor,
+  data across experiments were pooled and linear models of the form **y = mx + c** were fitted in
+  R describing conversion from processed Chi.Bio fluorescence to molar concentration."*
+  A per-reactor **slope and intercept**, fitted against an offline instrument — consistent with
+  Sambruna's finding that an additive offset alone is insufficient.
+- **Inducer step-changes are entirely manual**: disable OD control, empty the input line to
+  waste, swap the media bottle, wash the pumps through to waste, add 1 mL of inducer in M9 per
+  vial, reconnect, re-enable. This is the third independent instance of the capability gap the
+  P8 schedule work addresses, and the most precisely documented.
+- **Growth rate is estimated with a Bayesian filter, not a smoother.** `GOFFREDOpy`
+  (Corrao 2026, already in §4.3) with measurement-noise SD **0.005**, adaptivity **0.15**, 1%
+  outlier-rejection confidence, verified by testing for absent autocorrelation of innovations up
+  to 5 lags, then a **21-point symmetric moving average** before model fitting. Our estimator is
+  an EWMA with learning rate 0.05 and no outlier rejection.
+
+### 9.5 Pen, Nunn & Goyal 2021 — what "high dynamic range" actually bought
+
+Revision 2 flagged this as the one platform claiming precisely the capability Chi.Bio lacks.
+It is a 30 mL cylindrical vial with turbidostat/chemostat modes, and — the part that matters —
+fluorescence is read through a **multi-fibre optic bundle probe** carrying excitation from LEDs
+into the culture and guiding emission to a **microPMT**, not through a chip spectrometer at 90°.
+
+That is the same architecture Sambruna recommends as the fix (fibre-coupled spectrometer + a
+high-pass filter). Two independent sources, one by construction and one by measurement,
+therefore converge on the same conclusion: **the sensitivity limit is the optical front end, and
+no amount of software fixes it.** This closes the argument that began with the Fluorostat 2015
+result in §1.3 — it is now three independent lines, not two.
+
+### 9.6 What revision 3 changes for this fork
+
+1. **The Run 1 sfGFP arm has a published expected result on the identical strain.** TB204 in a
+   Chi.Bio gives S/B ≈ 1. Run it as a **confirmation with a pre-declared decision rule**, not as
+   an open question — and take Sambruna's fourth guideline seriously: measure the inoculum in a
+   plate reader first, so the run starts knowing whether the signal exists at all.
+2. **Our constitutive strains cannot follow the best-practice design.** The recommended design is
+   induce-from-zero with pre-induction baseline subtraction. `attP21::PR-FP` is constitutive, so
+   the only available design is the steady-state comparison they explicitly advise against. That
+   is not fatal — matched-control subtraction is the fallback they endorse — but it should be
+   written down as a known limitation of the panel rather than discovered later.
+3. **Making matched-control subtraction first-class in the FP path is now the best-evidenced item
+   in the backlog** (TODO P5 item 316). The new argument is not "ratios are imprecise" but that
+   ratiometric normalisation *manufactures artifacts synchronised with dilution events* — in a
+   turbidostat, a signal that looks like a biological response.
+4. **The per-device calibration item has a concrete recipe and a shopping list** (TODO P5 item
+   319): beads per §9.3, per-reactor `y = mx + c` fitted against a plate reader per §9.4. The
+   bead route is the cheap one — it needs no strain, no culture, and no sterility, and it
+   measures σ_device directly rather than inferring it from cultures.
+5. **Two free procedural upgrades**, both from §9.4 and both applicable to the very next run: the
+   **15-minute post-blank stability check with re-blank**, and **drying after ethanol wiping**.
+   The first would have caught our stale-blank failure mode; the second is a live candidate for
+   the M0 mystery.
+6. **`GOFFREDOpy` is worth running offline on the Run 0 CSV.** It needs only `time`,
+   `od_measured` and a `growth`/`dilution` transition label, all of which we log, and it returns
+   per-point covariance and an outlier flag. Zero device risk — it is post-hoc analysis — and it
+   would say whether our EWMA growth rates are trustworthy, including for M0.

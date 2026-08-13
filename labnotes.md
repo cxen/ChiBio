@@ -350,7 +350,11 @@ three non-negotiables (WT at n=2, plus the sterile blank) take three slots, leav
 instead of two — so either the WT replicate or one of mCherry/sfGFP has to go. **Decision
 pending.**
 
-⬜ Time M4 was unplugged and retired · ⬜ what to do about a replacement
+⬜ Time M4 was unplugged and retired
+
+**Replacement: LabMaker contacted 2026-08-13** with `docs/m4-fault-report-labmaker.md` (draft in
+`docs/m4-email-draft.md`). ⬜ exact time sent · ⬜ their reply. **Plan for four reactors
+regardless** — nothing should wait on an RMA of unknown duration.
 
 ---
 
@@ -571,6 +575,32 @@ do not sit among real data.
 
 ---
 
+## 2026-08-13 (afternoon) — vials out, rig empty
+
+**The Run 0 vials were removed** for sterilisation and prep of the next run, ending the
+matched-control window that the two sessions above ran inside. The device stayed up throughout
+(uptime 1 d 6 h at 18:05), server on `/root/chibio`, no experiment running, every output off,
+laser targets 0.5, M0–M3 present, LED version 2.
+
+**Two RAM-only things died with the vials, and both have to be re-made in the next run:**
+
+- `OD0['target']` is back at the stale default **65000** on the UI device, so the OD the interface
+  reports on an empty holder (~3.2) is meaningless. Re-blank per [[od-blanking]].
+- The **fluorescence reference EEM** (`sysDevices[M]['fluorReferenceMatrix']`) is gone, and so is
+  the matched WT vial it was measured from. The reference-subtraction path is shipped and
+  device-verified, but it has no reference until a new matched vial is scanned. Until then every
+  recommendation carries `confidence: 'unreferenced'`.
+
+**M4:** LabMaker contacted today with the fault report. Awaiting reply; Run 1 is being planned for
+four reactors regardless.
+
+**Next bench job, while the rig is empty:** the OD dilution series —
+`docs/od-dilution-series-protocol.md`. It needs clean vials and no culture in the way, so this
+turnaround is its window; running it after Run 1 means Run 1's OD column was logged against an
+uncalibrated model.
+
+---
+
 ## To fill in
 
 Please add these — the software has no way to know them.
@@ -600,3 +630,8 @@ Please add these — the software has no way to know them.
 - [ ] Time the tubes were removed on 2026-08-12
 - [ ] Time the cuvette readings were taken
 - [ ] Anything observed at the bench not in the log (foam, colour, smell, condensation)
+
+**2026-08-13 turnaround**
+- [ ] Time the Run 0 vials were removed from the reactors
+- [ ] Time the LabMaker fault report was sent, and their reply
+- [ ] Sterilisation method/cycle used on the vials before the next run

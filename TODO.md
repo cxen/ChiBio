@@ -7,7 +7,7 @@ Ranking: **P1** = real bug / correctness · **P2** = robustness or security hard
 
 ---
 
-## ▶ START HERE — state of the rig, 2026-08-13
+## ▶ START HERE — state of the rig, 2026-08-13 (evening)
 
 **Read `INVARIANTS.md` first.** It is the operational rulebook: what happens when you touch
 hardware, how to write watcher scripts that don't kill their own shell, the single-owner rule,
@@ -16,8 +16,10 @@ and which readings lie. Nearly every rule in it was learned by breaking somethin
 **Hardware: four reactors, not five.** The **M4 reactor unit is faulty and retired** — it pulls
 down the shared I²C bus and prevents the whole rig from booting. Localised to the unit itself
 (cable, connector, controller channel and power each excluded; the fault followed the unit to
-port T7). M0–M3 verified healthy, `device_selftest.py` **16/16**. Fault report ready to send:
-`docs/m4-fault-report-labmaker.md`, email draft `docs/m4-email-draft.md`.
+port T7). M0–M3 verified healthy, `device_selftest.py` **16/16**. **LabMaker contacted
+2026-08-13** with `docs/m4-fault-report-labmaker.md` (email draft `docs/m4-email-draft.md`);
+awaiting their reply. **Plan every run for four reactors** — a replacement, if one comes, is not
+on a timescale any experiment should wait for.
 
 **Run 0 is done.** 13 h, five reactors, WT in four plus a sterile blank. Archived and
 md5-verified to `~/chibio-run0-2026-08-11/`. Full narrative, timings and results in
@@ -29,14 +31,20 @@ md5-verified to `~/chibio-run0-2026-08-11/`. Full narrative, timings and results
 - The FP gain change (512× → 32×) took the CLEAR base from 34–60k to 3.5–8.5k and **eliminated
   all NaN losses** (previously 24–57% of rows).
 
-**Nothing is running.** Server up on `/root/chibio`, M0–M3 present, all outputs off, laser
-targets at 0.5. **Re-blank before the next run** ([[od-blanking]]) — blanks are RAM-only and the
-deploy restarted the worker.
+**The rig is empty and idle.** The Run 0 vials were **removed 2026-08-13** for sterilisation and
+prep of the next run. Server up on `/root/chibio` (uptime 1 d 6 h), M0–M3 present, no experiment
+running (`cycles 0`), every output off, laser targets at 0.5, LED version 2. `OD0['target']` is
+back at the stale default **65000**, so the OD the UI reports (~3.2 on an empty holder) is
+meaningless — **re-blank before the next run** ([[od-blanking]]); blanks are RAM-only and the
+deploy restarted the worker. The RAM-only fluorescence **reference EEM is likewise gone**, and its
+sample with it — a new reference has to be scanned from a matched vial in the next run.
 
 **The code backlog below is cleared, shipped and pushed.** `master` = Mac = device =
-`origin/master` = **`7b3d268`**. `device_selftest.py` **16/16** on production, off-device suite
-**13/13**. The `fix/concurrency-and-saturation` and `docs/literature-audit-rev2` branches were
-fast-forwarded into `master` and deleted; nothing is outstanding.
+`origin/master` = **`be3beab`**. `device_selftest.py` **16/16** on production, off-device suite
+**15/15**. `/root/chibio-staging` and `/root/chibio` now differ only in `CLAUDE.md` and git
+metadata — the product code is identical, so **the promote step is done**. The
+`fix/concurrency-and-saturation` and `docs/literature-audit-rev2` branches were fast-forwarded
+into `master` and deleted; nothing is outstanding.
 
 ### Session of 2026-08-13 — the idle rig used as a matched-control experiment
 
@@ -116,14 +124,52 @@ the real stamp and asserts the clock. **Re-verified: `stalled=0` throughout, 0 f
    - **Instrumented rather than guessed:** a stall watchdog dumps every thread's stack plus
      loadavg if it ever loses the CPU for 30 s, and both the bus lock and the measurement mutex
      log any wait over 10 s. The next occurrence should name its own cause.
-2. **Run 1 slot design for four reactors.** The runbook is scoped for five and does not fit:
+2. **Run the OD dilution series while the rig is empty — this is the window.** `docs/od-dilution-series-protocol.md`.
+   It is the deciding test for the `CLAUDE.md` claim that blanking is all that calibrates OD, which
+   **32 reactors of published evidence contradict** (review §4.2: three groups each fitted a
+   *different* per-reactor curve). It needs clean vials and no culture in the way, so it belongs in
+   the sterilisation turnaround, not after Run 1 has already been logged against an uncalibrated
+   column. It also converts the provisional Chi.Bio↔cuvette scale (**2.81 ± 0.22**, one density,
+   n=3) into a fitted curve over a decade of OD. Two reactors minimum (M1 + M3 — the two clean
+   growers); all four if the vials allow, since the marginal cost is one dilution row each.
+3. **Run 1 slot design for four reactors.** The runbook is scoped for five and does not fit:
    WT at n=2 plus the sterile blank take three slots, leaving one FP arm instead of two.
    Consider **two sequential four-reactor runs** (WT×2 + sterile + mCherry, then WT×2 + sterile +
    sfGFP) — keeps every non-negotiable, costs a day. Do not put a load-bearing arm on M0 until
    its slow growth is explained.
-3. **Fill the ⬜ gaps in `labnotes.md`** — needs the operator, not an agent.
-4. **Promote staging → `/root/chibio`** once you are happy with it, and re-blank
-   ([[od-blanking]]) before the next run.
+
+   **New constraint from the literature (review §9.3/§9.6, 2026-08-13): the sfGFP arm now has a
+   published expected result on the identical strain.** Sambruna et al. measured **fixed TB204
+   sfGFP** — `MG1655 attP21::PR-sfGFP`, Addgene 230033, the exact strain the runbook assigns to
+   M3 — in a Chi.Bio and got **S/B ≈ 1**, with only two concentrations out of the series clearing
+   a 10% discrepancy threshold, and the post-normalisation separation no larger than σ_device.
+   Two consequences: (a) run that arm as a **confirmation against a pre-declared decision rule**,
+   not as an open question; (b) follow their fourth guideline and **measure the inoculum in a
+   plate reader before committing the reactor**, so the run begins knowing whether the signal
+   exists at all. Also record as a known limitation of the panel: their recommended design is
+   *induce from a zero baseline and subtract the pre-induction reading*, which the constitutive
+   `attP21::PR-FP` strains cannot do — leaving the steady-state comparison they advise against,
+   with matched-control subtraction as the endorsed fallback.
+
+4. **Two free procedural upgrades from the source lab's own protocol** (review §9.4) — both apply
+   to the very next run, both cost minutes:
+   - **Blank, wait 15 min, check stability, re-blank if it moved** (they equilibrate temperature
+     15 min before the first blank, then verify for a further 15 min). We blank once and proceed;
+     this is the check that would have caught our stale-blank failure mode.
+   - **Dry the vials after the ethanol wipe.** They specify "cleaned with ethanol *and dried*".
+     `INVARIANTS.md` §6 lists residual ethanol as an untested candidate for M0's slow growth, and
+     this is the one candidate that costs nothing to eliminate.
+
+5. **Run `GOFFREDOpy` offline on the Run 0 CSV** (Corrao 2026, the estimator the Oxford lab
+   actually uses). It needs only `time`, `od_measured` and a `growth`/`dilution` transition label
+   — all of which we log — and returns per-point covariance plus an outlier flag. Zero device
+   risk, since it is post-hoc analysis. It would say whether our EWMA growth rates (learning rate
+   0.05, no outlier rejection) are trustworthy, **including M0's anomalous µ 0.404**, before we
+   design a run around that number.
+6. **Fill the ⬜ gaps in `labnotes.md`** — needs the operator, not an agent. Two new ones as of
+   today: the time M4 was unplugged/retired, and the date LabMaker was contacted.
+7. ~~Promote staging → `/root/chibio`~~ — **done**; the two trees now carry identical product code.
+   Re-blanking ([[od-blanking]]) is still a prerequisite for the next run.
 
 ### Corrections this work produced (claims in this file that were wrong)
 
@@ -313,10 +359,10 @@ First validation against real fluorophores: GFP in M0, YFP in M1 (MG1655, single
 From the usage literature review (`docs/chibio-usage-literature-review.md`). **The onboard AS7341 fluorescence is not quantitatively trustworthy for GFP-in-cells as normalized today.** The evidence, in descending strength (rev. 2 of the review, 2026-08-11): the colleagues' bioRxiv metrology paper (Sambruna/Tallarico/Cosentino Lagomarsino 2026, on the *upstream* software: fixed GFP cells indistinguishable from wild-type, S/B ≈ 1.0, while a plate reader resolved them easily); a **purpose-built 90° fluorimeter with real interference filters that failed the same way** (Fluorostat 2015 — so this is geometry, not the cheap chip); **five years of forum reports** with Steel naming filter bleed-through as the cause and giving a floor of *"<0.5% of 'very bright'"*; a QUT thesis showing the readout is **flat during turbidostat steady state** and only separates once dilution stops (i.e. the worst case is exactly the mode this rig runs in); **three groups that built per-reactor calibration layers** rather than trust it raw; and a control group that built an EKF instead, writing that in-situ fluorescence *"would eliminate the need for observers"*. Corroborating *practice* rather than measurement: the Joshi lab used the onboard channel only as a live monitor and took quantitative points offline (cytometry for sfGFP, qPCR for PCN) — they never compared the two, so this is revealed preference, not a cross-check. Root cause (confirmed by H. Steel, pers. comm. in the paper): broad-spectrum LEDs leak excitation through the emission filters → concentration-dependent background; the 90° LED–detector geometry adds a scatter peak near the excitation wavelength. These build on the deferred FP-dark-correction and the autofluorescence items above — same track, now with external corroboration. **Each GUI-facing item triggers the CLAUDE.md GUI design-skill sequence.**
 
 - [x] **Guard Clear-channel saturation in FP normalization.** *(Implemented off-device 2026-07-18; **deployed + verified on device 2026-07-18** — staging self-test 8/8, live-fired on M0 stationary culture: with the threshold temporarily at 55000 the ~56000 CLEAR base flipped `valid=0` on every read, confirming the firing path end-to-end; restored to 60000, promoted to `/root/chibio`, prod self-test 8/8. Note: at the current cooled/settled density M0 peaks ~56000 — just under the 60000 line — so live reads sit `valid=1`; the ≥60000 regime is the warm freshly-plateaued state, already matched by the off-device test + the archived weekend CSV incidence, 277 M0 / 52 M1.)* `_fp_valid_flag(base, as7341_valid)` in `chibio_measurements.py` flags `valid=0` when the CLEAR base ≥ `_FP_BASE_NEAR_SATURATION` (60000, ~92% FS), so `csvData` logs NaN instead of a silently-corrupted ratio — same validity/NaN contract as a comms failure. Autorange only retries on an *exact* 65535, so near-ceiling bases slipped through. `test_fp_saturation.py` covers the branch off-device (7/7 suite green, no regression). Validated against the live-run CSVs: the shipped helper flags exactly the observed incidence (M0 FP3 277/689 active cycles ≈ 40% at plateau, M1 52/688) — confirming it does what the data showed. The high M0 rate is itself a signal the FP3 gain/band saturates at this density (revisit on-device). ponytail: 60000 is a fixed threshold; retune against a saturating culture if it proves off.
-- [~] **Make direct non-fluorescent-control subtraction a first-class FP mode**, over ratiometric Clear-normalization. *(Half done 2026-08-13: shipped for the SCAN/assist, not yet for the FP measurement path.)* The assist now subtracts a matched non-fluorescent EEM and reports `confidence`. The **per-cycle FP columns still log the ratiometric emit/base**, so the logged timeseries is unchanged. Landing it there needs a per-reactor control assignment that `csvData` can see and a decision on whether to add columns or post-process; the raw emit counts it needs already exist (`FP*_emit{1,2}_raw`, added 2026-08-12). Note the measured constraint: cross-reactor subtraction of a **single FP slot's** ratio left 8-53% of the raw value in Run 0, far worse than the 6-8% the full EEM achieves, because one slot has no scatter cells to fit the scale on. So the FP-path version should carry the scale fitted from a scan, not fit its own. The paper shows matched-control subtraction (same reactor) is linear with near-zero intercept, where ratiometric breaks at both ends. This is the concrete form of the deferred "FP dark correction" (needs the raw emit counts, currently stored only as emit/base ratios — see [[sensor-failure-semantics]]). Control must be same-device or cross-device calibrated.
+- [~] **Make direct non-fluorescent-control subtraction a first-class FP mode**, over ratiometric Clear-normalization. *(Half done 2026-08-13: shipped for the SCAN/assist, not yet for the FP measurement path.)* **Now the best-evidenced item in this backlog** (review §9.3): the argument is no longer "ratios are imprecise" but that ratiometric normalisation **manufactures artifacts synchronised with dilution events** — Sambruna, from the analytic form `(a·c+b)/(a_C·c+b_C)`, names it *"particularly problematic in dynamic experiments with periodic dilutions, where the normalization generates artifactual signal changes that can be mistaken for biological responses."* A turbidostat is exactly that experiment, so this defect is live in every run this rig does. The assist now subtracts a matched non-fluorescent EEM and reports `confidence`. The **per-cycle FP columns still log the ratiometric emit/base**, so the logged timeseries is unchanged. Landing it there needs a per-reactor control assignment that `csvData` can see and a decision on whether to add columns or post-process; the raw emit counts it needs already exist (`FP*_emit{1,2}_raw`, added 2026-08-12). Note the measured constraint: cross-reactor subtraction of a **single FP slot's** ratio left 8-53% of the raw value in Run 0, far worse than the 6-8% the full EEM achieves, because one slot has no scatter cells to fit the scale on. So the FP-path version should carry the scale fitted from a scan, not fit its own. The paper shows matched-control subtraction (same reactor) is linear with near-zero intercept, where ratiometric breaks at both ends. This is the concrete form of the deferred "FP dark correction" (needs the raw emit counts, currently stored only as emit/base ratios — see [[sensor-failure-semantics]]). Control must be same-device or cross-device calibrated.
 - [x] **Enforce a minimum ex/em separation** — *(Resolved 2026-08-13, but NOT by widening the Stokes cutoff: by reference subtraction.)* The 2026-07-18 finding that no single-reactor heuristic separates a dim FP from the ridge is now confirmed on hardware from the other direction — the ridge appears in a **sterile tube**, so it is not a property of the sample at all and no rule over one sample's own EEM can see it. A widened cutoff also fails on the measured matrix: pushing past `LEDI(550)→nm583` (33 nm) only moves the pick to `LEDI→nm620` (70 nm), which is still 1.3 LED half-widths out and still scales with biomass. What works is the matched control, now shipped. The `STOKES_MIN_SHIFT` filter stays as the cheap first pass. *Original note:* **Enforce a minimum ex/em separation** in `recommend_fp_settings` to avoid the scatter peak (90° geometry) — dovetails with the autofluorescence-margin fix above. The Stokes-shift rule already leans this way; make the cutoff explicit. **Finding 2026-07-18 (off-device, real M1 EEM):** min-separation alone does NOT fix the autofluorescence pick — the current recommender chooses `ex550→nm583` (autofluor ridge, 33 nm shift, already Stokes-valid) over the true `ex523→nm550` YFP cell (4× weaker), and no single-reactor heuristic (bigger Stokes floor, margin-over-floor, peak-localization) reliably separates a dim FP from the ridge without over-filtering legit FPs. **Confirmed this needs the matched non-fluorescent-control subtraction above, which needs a WT/blank reactor set up on-device.** Deliberately NOT shipping a heuristic that would give false confidence. Do with the Monday control experiment.
 - [x] **GUI: warn when expected signal is likely sub-detectable.** *(Done 2026-08-13.)* Now anchored to a floor measured on this rig rather than to a general caution: a referenced result whose residual is under 2x the detection threshold sets `near_floor` and carries a note saying so, and a referenced scan that finds nothing says the same thing in the empty state. Both name the real number — two reactors holding the *same* non-fluorescent culture still differ by 6-8% after subtraction — and both state explicitly that raising gain or LED power will not help, since it scales signal and leak together. The text lives in one constant (`_SUB_DETECTABLE_NOTE`) so the scan result and the UI cannot drift apart.
-- [ ] **Per-device fluorescence calibration constants** (a bead-based reference stored per reactor), the prerequisite for any cross-device fluorescence comparison. **Now measured on this rig (2026-08-13, four WT reactors on one culture): sigma_device is CV 5.1% (FP3 nm620) to 23.9% (FP2 nm583) at matched OD, with M1 the high outlier in every channel; at the EEM level a matched-scale subtraction between two reactors still leaves 6-8%, against 0.4% scan-to-scan repeatability.** So the between-reactor term is ~15x the read noise and is the binding constraint, exactly as the literature says. Inter-device σ persists after normalization (net-signal / σ_device ≈ 3.3, not reliably above threshold). *(Justified by the paper directly, not — as previously written — "exactly like the per-M0–M3 OD factors": those `CF` constants are inherited dead code. The live in-repo precedent is the per-reactor blank `OD0['target']` via `CalibrateOD`.)* **Two published recipes now exist and should be read first:** Lee/Steel 2025 fit a per-reactor **offset + scaling factor** against a dilution series; Stacey/Steel 2026 adapt **FPCountR** to a per-reactor linear a.u.→molar conversion; Díaz-Iza 2025 give **MEFL·particle⁻¹** units with public code. Note Sambruna's caveat that a per-device *scalar* is insufficient — the correction is concentration-dependent.
+- [ ] **Per-device fluorescence calibration constants** (a bead-based reference stored per reactor), the prerequisite for any cross-device fluorescence comparison. **Now has a directly executable recipe and shopping list** (review §9.3/§9.4, added 2026-08-13): Fluoresbrite YG Carboxylate 1.00 µm (ex/em 441/486) and/or PS-FluoRed 0.98 µm (530/607) against **AP-10-10** non-fluorescent amino-polystyrene 1.0–1.4 µm as the matched blank, diluted in Milli-Q into standard vials at 20 mL over **0.2–3.4 × 10⁷ particles/mL**, gain ×512, power 0.1. Beads need no strain, no culture and no sterility, and they measure σ_device *directly* instead of inferring it from cultures — and Sambruna shows beads stay cleanly separated across devices where cells do not, so a bead run also tells you the instrument is working. Then fit per reactor as the source lab does: **`y = mx + c`** (slope *and* intercept) from reactor samples measured offline in a plate reader at fixed settings, FPCountR-style. **Now measured on this rig (2026-08-13, four WT reactors on one culture): sigma_device is CV 5.1% (FP3 nm620) to 23.9% (FP2 nm583) at matched OD, with M1 the high outlier in every channel; at the EEM level a matched-scale subtraction between two reactors still leaves 6-8%, against 0.4% scan-to-scan repeatability.** So the between-reactor term is ~15x the read noise and is the binding constraint, exactly as the literature says. Inter-device σ persists after normalization (net-signal / σ_device ≈ 3.3, not reliably above threshold). *(Justified by the paper directly, not — as previously written — "exactly like the per-M0–M3 OD factors": those `CF` constants are inherited dead code. The live in-repo precedent is the per-reactor blank `OD0['target']` via `CalibrateOD`.)* **Two published recipes now exist and should be read first:** Lee/Steel 2025 fit a per-reactor **offset + scaling factor** against a dilution series; Stacey/Steel 2026 adapt **FPCountR** to a per-reactor linear a.u.→molar conversion; Díaz-Iza 2025 give **MEFL·particle⁻¹** units with public code. Note Sambruna's caveat that a per-device *scalar* is insufficient — the correction is concentration-dependent.
 
 ## P8 — Scheduled dosing / media-composition programs (literature-driven, 2026-07-18)
 
