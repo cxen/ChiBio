@@ -81,6 +81,45 @@ rises 5-10 % across the three reads in every reactor holding cells and is flat (
 sterile one. `od_spread` therefore mixes a mixing signal with a monotonic sedimentation ramp.
 (Stationary, unheated culture, so this is an upper bound on a stirred exponential one.)
 
+### Scope and success criteria — decided 2026-08-13
+
+Recorded so the backlog is read against the right target.
+
+**What the corpus actually shows.** ~40 works use Chi.Bio successfully — turbidostats, chemostats,
+150-day ALE, co-culture composition control, optogenetics, pH-controlled depolymerisation. The
+platform works. The single thing **nobody** has made work is quantitative fluorescence of dim FPs
+in cells from the onboard channel, and it is hardware-bound: broad LEDs leak through the emission
+filters, the 90° geometry adds a scatter peak, and a purpose-built fluorimeter with real
+interference filters failed identically in 2015. **No software change fixes this. Stop planning
+as though one might.**
+
+**The success criterion is not "quantify GFP".** It is: *an instrument whose limits are known
+numerically.* Against that, this fork is most of the way there — measured detection floors
+(0.4 % repeatability, 6–8 % matched-WT residual, 20–22 % sterile), σ_device on our own four
+reactors, a known-answer test that caught a sterile tube earning a confident recommendation, and
+reference subtraction shipped and device-verified. None of those numbers exist in the corpus.
+
+**The dependency that decides the FP track: routine access to a plate reader or flow cytometer.**
+Both labs that got quantitative fluorescence out of a Chi.Bio did it offline — Joshi by cytometry,
+Oxford by plate-reader FPCountR cross-calibration with a per-reactor `y = mx + c`. That is the
+published standard of practice, not a workaround.
+- **With that access:** the FP track has an evidenced path, and the onboard channel becomes what
+  it is good at — a live monitor that tells you *when to sample*.
+- **Without it:** scope the FP track down to qualitative live monitoring and move the effort to
+  OD, growth rate and scheduled dosing, all of which this rig does well and two of which this
+  fork has already taken past upstream. ⬜ **Open question for the operator.**
+
+**Downgraded as a result:** the sfGFP arm as an open question (answered — see next actions §3;
+run it only as a cheap rider); further literature searching (the corpus is closed, confirmed by a
+from-scratch re-run in review §9.1); and any attempt to make the onboard channel absolutely
+quantitative in software.
+
+**Still worth doing, in this order:** the OD dilution series (not about fluorescence at all — OD
+feeds every conclusion, and the rig is empty now), a bead run (no strain, no culture, no
+sterility; measures σ_device directly and tells you whether the instrument is healthy), then the
+mCherry arm (the one FP question with a real chance of a positive — brighter, better-served on
+V2 at LEDH 600 → nm670, and off the ridge; the published negative is on sfGFP at 457/510).
+
 ### Next actions, in priority order
 
 All four live-run defects, all four audit defects, and three more found while fixing them
