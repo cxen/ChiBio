@@ -612,6 +612,7 @@ function updateData(data){
         }
               
         window._fluorData = data;   // last payload, so a panel click can redraw without waiting for the next poll
+        renderSchedule(data);      // dosing schedule (client-owned rows; see renderSchedule)
         renderFluorescence(data);  // fluorescence-assist panel (self-gates; safe every poll)
 
         // Now to draw the charts
@@ -957,11 +958,15 @@ function renderFluorescence(data){
       + ' <button class="btn btn-sm btn-success fluorApply" data-fp="2">→ FP2</button>'
       + ' <button class="btn btn-sm btn-success fluorApply" data-fp="3">→ FP3</button>'
       + detail
+      + (r.floor_note ? '<div class="fluor-note fluor-note--warn">'+r.floor_note+'</div>' : '')
       + (r.warning ? '<div class="fluor-note">'+r.warning+'</div>' : '');
   } else {
     window._fluorRec = null;
     recEl.innerHTML = fs.referenced
       ? '<span class="fluor-verdict is-referenced">Checked</span><i>Nothing rises above the reference — no fluorophore detected in this sample.</i>'
+        + '<div class="fluor-note">If you expected one, note that this instrument cannot separate a '
+        + 'signal smaller than about 6–8% of the background — the amount two reactors holding the '
+        + 'same non-fluorescent culture differ by. Raising the gain or LED power will not help.</div>'
       : '<i>No clear fluorescence peak found — the sample may be non-fluorescent.</i>';
   }
 
@@ -1011,7 +1016,9 @@ function renderFluorReference(data, fs){
   window._fluorRefSig = sig;
 
   stateEl.textContent = from ? from : 'none';
-  stateEl.style.color = from ? 'var(--text)' : 'var(--text-muted)';
+  // CSS owns the colour (inline styles beat every stylesheet rule, which is how dark mode used
+  // to end up with invisible text) -- toggle a class instead.
+  stateEl.classList.toggle('fluor-ref-label', !from);
   var keep = sel.value;
   sel.innerHTML = opts.map(function(m){ return '<option value="'+m+'">'+m+'</option>'; }).join('');
   if(opts.indexOf(keep) >= 0) sel.value = keep;
@@ -1047,5 +1054,134 @@ $(function(){
     $('#FPExcite'+n).val(r.excite); $('#FPBase'+n).val(r.base);
     $('#FPEmit'+n+'A').val(r.emit1); $('#FPEmit'+n+'B').val(r.emit2); $('#FPGain'+n).val(r.gain);
     document.getElementById('FluorStatus').textContent = 'Applied to FP'+n+' — review the FP'+n+' fields, then click its Active button to enable.';
+  });
+});
+
+
+// ---- Dosing schedule -------------------------------------------------------------------
+// Rows are CLIENT-owned. The panel around them re-renders from a 1 s poll, so rebuilding the
+// inputs from the server would wipe whatever the user is halfway through typing. The server is
+// only allowed to (re)build the rows when the editor is clean, and always when the reactor
+// changes -- each reactor has its own schedule and one reactor's edits must never be saved onto
+// another. Everything read-only (status, which stage is in force) still updates every poll.
+// Keep in step with SCHEDULABLE in chibio_schedule.py -- test_schedule_ui.py asserts they match.
+var SCHED_ITEMS = [
+  ['Pump1', 'Pump 1'], ['Pump2', 'Pump 2'], ['Pump3', 'Pump 3'], ['Pump4', 'Pump 4'],
+  ['Stir', 'Stir'], ['Heat', 'Heater'], ['UV', 'UV'], ['LASER650', 'Laser 650'],
+  ['LEDA', 'LED A 395'], ['LEDB', 'LED B 457'], ['LEDC', 'LED C 500'], ['LEDD', 'LED D 523'],
+  ['LEDE', 'LED E 595'], ['LEDF', 'LED F 623'], ['LEDG', 'LED G white'], ['LEDH', 'LED H 600'],
+  ['LEDI', 'LED I 550'],
+  ['ODTarget', 'OD setpoint'], ['ThermostatTarget', 'Temperature setpoint']
+];
+
+function schedMarkDirty(){
+  window._schedDirty = true;
+  document.getElementById('SchedDirty').style.display = '';
+  // The in-force marker is computed from the SAVED stages. Showing it against edited rows would
+  // point at the wrong line, so drop it until the edits are saved or discarded.
+  var rows = document.querySelectorAll('#SchedRows .sched-row');
+  for(var i=0;i<rows.length;i++){ rows[i].classList.remove('is-now'); rows[i].classList.remove('is-future'); }
+}
+
+function schedRowHtml(st){
+  var opts = SCHED_ITEMS.map(function(it){
+    return '<option value="'+it[0]+'"'+(it[0]===st.item?' selected':'')+'>'+it[1]+'</option>';
+  }).join('');
+  return '<tr class="sched-row">'
+    + '<td class="num"><input type="number" class="sched-at" step="0.1" min="0" value="'+st.at_h+'"></td>'
+    + '<td><select class="sched-item">'+opts+'</select></td>'
+    + '<td class="num"><input type="number" class="sched-target" step="0.001" value="'+st.target+'"></td>'
+    + '<td><input type="checkbox" class="sched-ramp"'+(st.ramp?' checked':'')+' aria-label="ramp into this stage"></td>'
+    + '<td><button class="sched-remove" title="Remove this stage" aria-label="Remove this stage">&times;</button></td>'
+    + '</tr>';
+}
+
+function schedReadRows(){
+  var out = [];
+  var rows = document.querySelectorAll('#SchedRows .sched-row');
+  for(var i=0;i<rows.length;i++){
+    var r = rows[i];
+    out.push({at_h: parseFloat(r.querySelector('.sched-at').value),
+              item: r.querySelector('.sched-item').value,
+              target: parseFloat(r.querySelector('.sched-target').value),
+              ramp: r.querySelector('.sched-ramp').checked ? 1 : 0});
+  }
+  return out;
+}
+
+function schedBuildRows(stages){
+  document.getElementById('SchedRows').innerHTML = stages.map(schedRowHtml).join('');
+  document.getElementById('SchedEmpty').style.display = stages.length ? 'none' : '';
+}
+
+function renderSchedule(data){
+  var rowsEl = document.getElementById('SchedRows'); if(!rowsEl) return;
+  var sc = data.Schedule || {stages: [], ON: 0, applied: -1, status: ''};
+
+  // A reactor switch reloads the editor unconditionally: the rows on screen belong to the
+  // reactor we were looking at, and saving them onto the new one would be a silent mix-up.
+  if(window._schedDevice !== data.UIDevice){
+    window._schedDevice = data.UIDevice;
+    window._schedDirty = false;
+    document.getElementById('SchedDirty').style.display = 'none';
+    document.getElementById('SchedMsg').textContent = '';
+    schedBuildRows(sc.stages);
+    window._schedSaved = JSON.stringify(sc.stages);
+  } else if(!window._schedDirty && JSON.stringify(sc.stages) !== window._schedSaved){
+    schedBuildRows(sc.stages);                       // changed elsewhere; safe to adopt
+    window._schedSaved = JSON.stringify(sc.stages);
+  }
+
+  setActive('SchedRun', sc.ON ? 'go' : '');
+  document.getElementById('SchedRun').textContent = sc.ON ? 'Stop' : 'Start';
+  document.getElementById('SchedStatus').textContent = sc.ON ? (sc.status || 'running') : 'off';
+
+  // Mark the stage in force, but only while the editor matches what is actually running.
+  var rows = rowsEl.querySelectorAll('.sched-row');
+  for(var i=0;i<rows.length;i++){
+    rows[i].classList.remove('is-now'); rows[i].classList.remove('is-future');
+    if(window._schedDirty || !sc.ON) continue;
+    if(i === sc.applied) rows[i].classList.add('is-now');
+    else if(i > sc.applied) rows[i].classList.add('is-future');
+  }
+}
+
+$(function(){
+  $(document).on('input change', '#SchedRows input, #SchedRows select', schedMarkDirty);
+  $('#SchedAdd').click(function(){
+    var stages = schedReadRows();
+    var last = stages.length ? stages[stages.length-1] : null;
+    stages.push({at_h: last ? last.at_h + 12 : 0, item: last ? last.item : 'Pump3',
+                 target: 0, ramp: 0});
+    schedBuildRows(stages);
+    schedMarkDirty();
+  });
+  $(document).on('click', '.sched-remove', function(){
+    var stages = schedReadRows();
+    stages.splice($(this).closest('.sched-row').index(), 1);
+    schedBuildRows(stages);
+    schedMarkDirty();
+  });
+  $('#SchedSave').click(function(){
+    var stages = schedReadRows();
+    $.ajax({type:'POST', url:'/SetSchedule/0', contentType:'application/json',
+            data: JSON.stringify({stages: stages})})
+      .done(function(){
+        window._schedDirty = false;
+        window._schedSaved = null;                   // let the next poll adopt the server's copy
+        document.getElementById('SchedDirty').style.display = 'none';
+        document.getElementById('SchedMsg').textContent = 'Saved.';
+      })
+      .fail(function(x){
+        // The server's message names the offending stage; show it verbatim rather than a generic
+        // failure, because it is the only thing that says which row is wrong.
+        document.getElementById('SchedMsg').textContent = x.responseText || 'Could not save.';
+      });
+  });
+  $('#SchedRun').click(function(){
+    var starting = document.getElementById('SchedRun').textContent === 'Start';
+    $.ajax({type:'POST', url:'/ScheduleOnOff/' + (starting ? 1 : 0) + '/0'})
+      .done(function(){ document.getElementById('SchedMsg').textContent = starting ? 'Following the schedule.' : 'Stopped.'; })
+      .fail(function(x){ document.getElementById('SchedMsg').textContent = x.responseText || 'Could not start.'; });
   });
 });

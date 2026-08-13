@@ -6,7 +6,7 @@ import random
 import time
 import math
 import logging
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from chibio_auth import init_auth
 from chibio_experiment import PumpModulation, RegulateOD, Thermostat, Zigzag, runExperiment
 from chibio_hardware import (I2CCom, get_i2c_device, measurement_sequence, setPWM,
@@ -291,6 +291,11 @@ def initialise(M):
         sysData[M][FP]['valid']=1
         sysData[M][FP]['GainUsed']=int(sysData[M][FP]['Gain'][1:])  #gain the last FP read landed on
         sysData[M][FP]['spread']=0.0  #max-min of the replicate FP base reads.
+
+    #Timed media/inducer schedule (see chibio_schedule.py). Stages are (hour -> item -> target);
+    #RAM-only like the OD blank and the FP reference, so re-set it after a restart.
+    sysData[M]['Schedule']={'ON':0, 'stages':[], 'applied':-1, 'status':'', 'threadCount':0}
+    sysDevices[M]['scheduleRunning']=0
 
     #Fluorescence-assist scan result (excitation-emission matrix + recommended FP settings).
     sysData[M]['FluorescenceScan']={'matrix':{}, 'recommendation':None, 'mode':'', 'status':'', 'bands':[], 'referenced':0}
@@ -598,6 +603,25 @@ def SetFluorescenceReference(M,source):
 # separate background threads, so two rapid UI actions can execute out of order —
 # `lock` serializes the bus, not intent. Self-heals: RegulateOD re-asserts state
 # each cycle. Upgrade path: a per-device command queue if ordering ever matters.
+@application.route("/SetSchedule/<M>",methods=['POST'])
+def SetSchedule(M):
+    #Store a timed media/inducer schedule. Body is JSON: {"stages": [{"at_h":0,"item":"Pump3",
+    #"target":0.0}, {"at_h":12,"item":"Pump3","target":0.02,"ramp":1}, ...]}.
+    #Synchronous and pure state -- validation must reject a bad schedule while the operator is
+    #still looking at it, not in a control thread an hour later.
+    from chibio_schedule import set_schedule
+    body = request.get_json(force=True, silent=True) or {}
+    ok, err = set_schedule(M, body.get('stages', []))
+    return ('', 204) if ok else (err, 400)
+
+
+@application.route("/ScheduleOnOff/<value>/<M>",methods=['POST'])
+def ScheduleOnOff(M,value):
+    from chibio_schedule import schedule_on_off
+    ok, err = schedule_on_off(M, value)
+    return ('', 204) if ok else (err, 409)
+
+
 @application.route("/SetOutputTarget/<item>/<M>/<value>",methods=['POST'])
 def SetOutputTarget(M,item, value):
     run_background(set_output_target_sync, M, item, value)

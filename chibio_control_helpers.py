@@ -249,6 +249,9 @@ _CSV_COLUMN_UNITS = {
     'custom_prog_param1': 'program-defined', 'custom_prog_param2': 'program-defined',
     'custom_prog_param3': 'program-defined', 'custom_prog_status': 'program-defined',
     'zigzag_target': 'OD', 'growth_rate': 'per_hour',
+    # -1 when no timed schedule is running, otherwise the index of the stage in force. Without
+    # it a scheduled step or ramp is invisible in the CSV except as its downstream effect.
+    'schedule_stage': 'index',
 }
 
 # Gain the AS7341 actually runs at for the OD read, keyed by OD device. Mirrors the
@@ -322,6 +325,8 @@ def csvData(M):
     data['custom_prog_status'] = sysData[M]['Custom']['Status']*float(sysData[M]['Custom']['ON'])
     data['zigzag_target'] = sysData[M]['Zigzag']['target']*float(sysData[M]['Zigzag']['ON'])
     data['growth_rate'] = sysData[M]['GrowthRate']['current']*sysData[M]['Zigzag']['ON']
+    data['schedule_stage'] = (sysData[M]['Schedule']['applied']
+                              if sysData[M]['Schedule']['ON'] == 1 else -1)
 
     #Following can be uncommented if you are recording ALL spectra for e.g. biofilm experiments
     #bands=['nm410' ,'nm440','nm470','nm510','nm550','nm583','nm620','nm670','CLEAR','NIR']

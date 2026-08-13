@@ -528,6 +528,49 @@ Off-device suite 13/13; `device_selftest.py` 16/16 on staging and again on produ
 
 ---
 
+## 2026-08-13 (10:20 → 11:05) — timed dosing schedules, built and driven on a live reactor
+
+Software session; no culture work. The Run 0 vials were still in M0-M3 (WT in M0/M1/M3, sterile
+medium in M2) and were used only as a live target to drive code against. **Nothing was pumped
+into any vial** — the schedule test drove LEDB at 0.3 power and the (inactive) thermostat
+setpoint, which exercises the whole path including real I2C without moving liquid.
+
+### What was tested on the device
+
+A schedule was set on M2, an experiment started (OD control off, so a cycle measures and logs but
+does not pump), and the schedule run for ~3.5 min:
+
+| | |
+|---|---|
+| Validation refusals | 4/4 returned HTTP 400 naming the offending stage — unknown channel, out-of-range target, negative hour, ramped stir |
+| Scheduled LED step | on at the 18 s mark at target 0.300, off at 50 s, through real I2C |
+| Ramped setpoint | 30.26 → 31.05 → 31.85 → 32.65 → 33.44 → 34.00, then held — linear, as specified |
+| `schedule_stage` CSV column | present, 64 columns, read 1 then 4 across four cycles |
+| Events sidecar | three `schedule_stage` transitions recorded |
+| Outputs after | all off, experiment stopped, schedule stopped |
+
+`device_selftest.py` **16/16** on staging and again on production. Off-device suite **15/15**.
+
+Test artifacts (the short M2 and M0 runs) were moved to `/root/schedule-test-artifacts/` so they
+do not sit among real data.
+
+### Three things worth remembering
+
+- **A template edit needs a gunicorn restart.** Jinja's auto-reload follows `app.debug`, which is
+  off, so `rsync`ing `templates/` changes nothing until the worker restarts — while `static/`
+  (JS/CSS) *does* update on a browser reload. That asymmetry cost a confused ten minutes reading
+  a CSS rule as broken when it simply was not being served.
+- **The `M == "0"` sentinel is easy to miss in a new module.** Every route accepts `0` for "the
+  reactor the UI is showing", and the UI's own buttons post to `/SetSchedule/0`. The new module
+  did not resolve it, so every button in the panel returned a bare 500 — and the device probe
+  missed it entirely because it passed `M2` explicitly. **A probe that addresses reactors by name
+  does not exercise the path the UI actually uses.**
+- **Stir cannot be ramped, and that is a hardware fact, not a preference.** `SetOutput`'s Stir
+  branch hard-starts the motor at full power for 1.5 s on any target change (INVARIANTS §6), so
+  a ramped stir would kick the motor every tick for the whole ramp. Now refused at validation.
+
+---
+
 ## To fill in
 
 Please add these — the software has no way to know them.

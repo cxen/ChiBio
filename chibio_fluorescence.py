@@ -91,6 +91,19 @@ _REFERENCE_RESIDUAL_MIN = 0.25
 # A fitted scale far from 1 means the reference was taken at a very different density, which
 # inflates the residual floor (measured: 6-8% matched vs 14-16% at 1.8x).
 _REFERENCE_SCALE_WARN = (0.5, 2.0)
+# A referenced result this close to the floor is not a measurement of a fluorophore, it is the
+# floor. 2x the 0.25 threshold: at 6-8% between two identical WT vials, anything under half a
+# background unit is inside the range two non-fluorescent reactors differ by anyway.
+_NEAR_FLOOR_RATIO = 2 * _REFERENCE_RESIDUAL_MIN
+# Said once, here, so the scan result and the UI cannot drift apart. Raising gain or LED power is
+# explicitly ruled out: it scales the signal and the leak background together (Sambruna et al.
+# 2026, Fig S4), so an interface that offers it as a remedy is misleading.
+_SUB_DETECTABLE_NOTE = (
+    'At or below what this instrument can separate from its own background. On this rig two '
+    'reactors holding the SAME non-fluorescent culture still differ by 6-8% after subtraction, '
+    'so a signal this size is not evidence of a fluorophore. Raising the gain or the LED power '
+    'will not help -- both scale the signal and the excitation leak together. Confirm on a plate '
+    'reader or cytometer before treating this as a measurement.')
 
 
 def _median(vals):
@@ -213,8 +226,11 @@ def _recommendation(source, led, emit1, sig, band_wl, confidence,
     if confidence == 'referenced':
         rec['reference_scale'] = round(float(scale), 3)
         rec['background'] = background
-        rec['signal_over_background'] = (round(float(sig) / abs(background), 3)
-                                         if background else None)
+        ratio = (float(sig) / abs(background)) if background else None
+        rec['signal_over_background'] = round(ratio, 3) if ratio is not None else None
+        if ratio is not None and ratio < _NEAR_FLOOR_RATIO:
+            rec['near_floor'] = 1
+            rec['floor_note'] = _SUB_DETECTABLE_NOTE
         lo, hi = _REFERENCE_SCALE_WARN
         if not (lo <= scale <= hi):
             rec['warning'] = ('reference taken at a very different density (fitted scale %.2f); '

@@ -106,7 +106,9 @@ assert set(added) == {'od_transmission_raw', 'od_transmission_dark', 'od_transmi
                       'FP2_emit1_raw', 'FP2_emit2_raw',
                       'FP3_emit1_raw', 'FP3_emit2_raw',
                       'pump_1_ontime_ms', 'pump_2_ontime_ms',
-                      'pump_3_ontime_ms', 'pump_4_ontime_ms'}, \
+                      'pump_3_ontime_ms', 'pump_4_ontime_ms',
+                      # which stage of a timed media/inducer schedule was in force (-1 = none)
+                      'schedule_stage'}, \
     "unexpected column changes: %s" % added
 print("PASS: all %d original columns unchanged; added %d new columns (dark-transmission, FP gain/spread, raw FP emissions, pump on-times)" % (
     len(exp_fieldnames), len(added)))

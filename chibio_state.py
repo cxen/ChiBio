@@ -45,6 +45,14 @@ sysData = {'M0' : {
    'OD0' : {'target' : 0.0,'raw' : 0.0,'max' : 100000.0,'min': 0.0,'LASERb' : 1.833 ,'LASERa' : 0.226, 'LEDFa' : 0.673, 'LEDAa' : 7.0  },
    'Chemostat' : {'ON' : 0, 'p1' : 0.0, 'p2' : 0.1},
    'Zigzag': {'ON' : 0, 'Zig' : 0.04,'target' : 0.0,'SwitchPoint' : 0},
+   #Timed media/inducer schedule (chibio_schedule.py): stages of (at_h -> item -> target), with
+   #an optional linear ramp into a stage. Lives here rather than only in initialise() because
+   #csvData reads it every cycle and the off-device tests build state straight from this
+   #template. RAM-only, like the OD blank -- re-set it after a restart.
+   'Schedule': {'ON' : 0, 'stages' : [], 'applied' : -1, 'status' : '', 'threadCount' : 0},
+   #Matched non-fluorescent reference for the fluorescence assist. Only the small 'from'/'time'
+   #pair lives in sysData; the EEM itself is in sysDevices, which is not serialized to the UI.
+   'FluorescenceReference': {'from' : '', 'time' : ''},
    'GrowthRate': {'current' : 0.0,'record' : [],'default' : 2.0},
    'Volume' : {'target' : 20.0,'max' : 50.0, 'min' : 0.0,'ON' : 0},
    #lastOntimeMs: what the pump ACTUALLY ran for on its last duty cycle (ms). Delivered volume
@@ -111,6 +119,11 @@ for M in ['M1','M2','M3','M4','M5','M6','M7']:
 # Assigned after the deepcopy above because a lock cannot be deepcopied.
 for M in ['M0','M1','M2','M3','M4','M5','M6','M7']:
         sysDevices[M]['measureLock']=RLock()
+        # Bulk per-device state the UI never reads, kept out of sysData because sysData is
+        # jsonified to the browser on every 1 s poll: the fluorescence reference EEM (a 6x8
+        # matrix) and the schedule thread's running flag.
+        sysDevices[M]['fluorReferenceMatrix']=None
+        sysDevices[M]['scheduleRunning']=0
 
 
 # sysItems stores information about digital addresses which is used as a reference
